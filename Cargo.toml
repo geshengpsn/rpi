@@ -1,0 +1,36 @@
+[package]
+name = "rpi"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+crossbeam = "0.8.4"
+
+# aruco detection and pose estimation
+opencv = { version = "0.92.0", features = ["clang-runtime"] }
+
+# video capture
+v4l = "0.14"
+
+# time
+nix = { version = "0.29.0", features = ["time"] }
+
+# video decoder
+zune-jpeg = "0.4.11"
+
+# matrix
+nalgebra = "0.33.0"
+
+# web server
+tokio = { version = "1.0", features = ["full"] }
+axum = { version = "0.7", features = ["ws"] }
+tower-http = { version = "0.5", features = ["fs", "trace", "cors"] }
+futures = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# ai
+burn = "0.13"
+burn-import = "0.13"
+burn-ndarray = { version = "0.13" }

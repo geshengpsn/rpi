@@ -1,0 +1,159 @@
+use std::{
+    io,
+    thread::{spawn, JoinHandle},
+};
+
+use crate::Result;
+use crossbeam::channel::Sender;
+use nix::sys::time::TimeSpec;
+use opencv::{
+    core::{Mat, CV_8UC3},
+    imgproc::{cvt_color_def, COLOR_RGB2BGR},
+};
+use std::fmt::Debug;
+use v4l::{
+    buffer::Metadata,
+    frameinterval::FrameIntervalEnum,
+    framesize::FrameSizeEnum,
+    io::traits::CaptureStream,
+    prelude::MmapStream,
+    video::{capture::Parameters, Capture},
+    Device, Format, FourCC, Fraction,
+};
+
+pub struct Camera<'a> {
+    device: Device,
+    stream: Option<MmapStream<'a>>,
+    fps: u32,
+    width: u32,
+    height: u32,
+    format: FourCC,
+    index: usize,
+    rgb_buffer: Vec<u8>,
+}
+
+impl Debug for Camera<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Camera")
+            .field("fps", &self.fps)
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("format", &self.format.to_string())
+            .field("index", &self.index)
+            .finish()
+    }
+}
+
+impl Camera<'_> {
+    pub fn new(index: usize, width: u32, height: u32, fps: u32) -> Result<Self> {
+        let device = Device::new(index).unwrap_or_else(|_| panic!("can not found camera{index}"));
+        let mut choosed_format = None;
+        for format in device
+            .enum_formats()
+            .unwrap_or_else(|_| panic!("enum formats fail (camera{index})"))
+        {
+            for frame_size in device
+                .enum_framesizes(format.fourcc)
+                .unwrap_or_else(|_| panic!("enum framesizes fail (camera{index})"))
+            {
+                if let FrameSizeEnum::Discrete(size) = frame_size.size {
+                    for fi in device
+                        .enum_frameintervals(format.fourcc, size.width, size.height)
+                        .unwrap_or_else(|_| panic!("enum frameintervals fail (camera{index})"))
+                    {
+                        if let FrameIntervalEnum::Discrete(fraction) = fi.interval {
+                            if size.width == width
+                                && size.height == height
+                                && fraction.denominator == fps
+                            {
+                                choosed_format = Some((width, height, format.fourcc));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if choosed_format.is_none() {
+            // 可能是参数设置不好，don’t panic
+            return Err(io::Error::other("no camera availbale"))?;
+        }
+        let (width, height, fourcc) = choosed_format.unwrap();
+        let real_format = device
+            .set_format(&Format::new(width, height, fourcc))
+            .unwrap_or_else(|_| panic!("set format fail (camera{index})"));
+        let real_params = device
+            .set_params(&Parameters::new(Fraction::new(1, fps)))
+            .unwrap_or_else(|_| panic!("set params fail (camera{index})"));
+        let mut cam = Camera {
+            stream: None,
+            device,
+            index,
+            fps: real_params.interval.denominator,
+            format: real_format.fourcc,
+            width: real_format.width,
+            height: real_format.height,
+            rgb_buffer: vec![0u8; (real_format.height * real_format.width * 3) as usize],
+        };
+        cam.open();
+        Ok(cam)
+    }
+
+    fn open(&mut self) {
+        let stream = MmapStream::new(&self.device, v4l::buffer::Type::VideoCapture)
+            .unwrap_or_else(|_| panic!("new mmap stream fail (camera{})", self.index));
+        // stream.start()?;
+        self.stream = Some(stream);
+    }
+
+    pub fn capture(&mut self) -> Result<(&[u8], TimeSpec)> {
+        use zune_jpeg::JpegDecoder;
+        assert!(self.stream.is_some());
+
+        // let start = std::time::Instant::now();
+        let (raw_mjpeg, Metadata { timestamp, .. }) = self.stream.as_mut().unwrap().next()?;
+        // println!("      stream next {:?}", start.elapsed());
+
+        // let start = std::time::Instant::now();
+        let mut decoder = JpegDecoder::new(raw_mjpeg);
+        decoder.decode_into(&mut self.rgb_buffer).unwrap(); // shouldn't happend
+        // println!("      decode {:?}", start.elapsed());
+        
+        Ok((
+            &self.rgb_buffer,
+            TimeSpec::new(timestamp.sec, timestamp.usec * 1000),
+        ))
+    }
+}
+
+pub fn spawn_usb_camera(
+    tx: Sender<(Mat, TimeSpec)>,
+    aruco_camera_index: usize,
+    width: u32,
+    height: u32,
+    fps: u32,
+) -> JoinHandle<Result<()>> {
+    spawn(move || {
+        let mut cam = Camera::new(aruco_camera_index, width, height, fps).expect("camera bad parameters");
+        loop {
+            // let start = std::time::Instant::now();
+            let (raw_img, ts) = cam.capture().unwrap();
+            // println!("  capture {:?}", start.elapsed());
+
+            // let start = std::time::Instant::now();
+            let img = mat_from_ptr(raw_img.as_ptr(), width as i32, height as i32).unwrap();
+            // println!("  mat_from_ptr {:?}", start.elapsed());
+
+            // let start = std::time::Instant::now();
+            tx.send((img, ts)).unwrap();
+            // println!("  send {:?}", start.elapsed());
+        }
+    })
+}
+
+pub fn mat_from_ptr(ptr: *const u8, width: i32, height: i32) -> Result<Mat> {
+    let img =
+        unsafe { Mat::new_rows_cols_with_data_unsafe_def(height, width, CV_8UC3, ptr as *mut _) }?;
+    let mut res_img = Mat::default();
+    cvt_color_def(&img, &mut res_img, COLOR_RGB2BGR)?;
+    Ok(res_img)
+}
