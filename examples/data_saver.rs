@@ -10,7 +10,7 @@ fn main() {
     let (tx, rx) = unbounded();
     let (sig_tx, sig_rx) = unbounded();
     spawn_imu(tx);
-    spawn_data_saver(rx, sig_rx);
+    spawn_data_saver(rx, None, sig_rx);
     loop {
         let mut input = String::new();
         stdin().read_line(&mut input).expect("input");

@@ -1,12 +1,7 @@
-mod net;
-
 mod errors;
 pub use errors::Result;
 pub mod usb_camera;
 pub mod aruco_finder;
-
-// mod video_recorder;
-
 pub mod soft_finger;
 
 pub mod data_saver;

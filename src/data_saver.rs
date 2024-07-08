@@ -1,6 +1,6 @@
 use std::{io::BufWriter, thread::spawn, time::Duration};
 
-use crossbeam::channel::Receiver;
+use crossbeam::channel::{Receiver, Sender};
 use opencv::{
     core::{Mat, Size},
     videoio::{VideoWriter, VideoWriterTrait, VideoWriterTraitConst},
@@ -11,12 +11,13 @@ pub enum Signal {
     End,
 }
 
-pub trait FrameData: serde::Serialize + Send + 'static {
+pub trait FrameData: serde::Serialize + Send + Clone + 'static {
     fn time_stamp(&self) -> Duration;
 }
 
 pub fn spawn_video_saver(
     data_rx: Receiver<Mat>,
+    data_tx: Option<Sender<Mat>>,
     signal_rx: Receiver<Signal>,
     width: u32,
     height: u32,
@@ -26,6 +27,9 @@ pub fn spawn_video_saver(
         let fourcc = VideoWriter::fourcc('m', 'p', '4', 'v').unwrap();
         let mut video_wtr: VideoWriter = VideoWriter::default().unwrap();
         while let Ok(img) = data_rx.recv() {
+            if let Some(tx) = data_tx.as_ref() {
+                tx.send(img.clone()).unwrap();
+            }
             if video_wtr.is_opened().unwrap() {
                 video_wtr.write(&img).unwrap();
             }
@@ -58,10 +62,17 @@ pub fn spawn_video_saver(
     });
 }
 
-pub fn spawn_data_saver<FD: FrameData>(data_rx: Receiver<FD>, signal_rx: Receiver<Signal>) {
+pub fn spawn_data_saver<FD: FrameData>(
+    data_rx: Receiver<FD>,
+    data_tx: Option<Sender<FD>>,
+    signal_rx: Receiver<Signal>,
+) {
     spawn(move || {
         let mut csv_wtr: Option<csv::Writer<BufWriter<std::fs::File>>> = None;
         while let Ok(data) = data_rx.recv() {
+            if let Some(tx) = data_tx.as_ref() {
+                tx.send(data.clone()).unwrap();
+            }
             if let Some(wtr) = csv_wtr.as_mut() {
                 wtr.serialize(data).expect("serialize");
             }
@@ -75,8 +86,9 @@ pub fn spawn_data_saver<FD: FrameData>(data_rx: Receiver<FD>, signal_rx: Receive
                             .open(path)
                             .expect("file");
                         let buf_wtr = BufWriter::new(f);
-                        let wtr =
-                            csv::WriterBuilder::new().has_headers(false).from_writer(buf_wtr);
+                        let wtr = csv::WriterBuilder::new()
+                            .has_headers(false)
+                            .from_writer(buf_wtr);
                         csv_wtr = Some(wtr);
                     }
                     Signal::End => {
