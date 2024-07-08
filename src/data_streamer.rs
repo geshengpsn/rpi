@@ -9,3 +9,5 @@ impl DataStreamer {
 
     fn stream() {}
 }
+
+pub fn spawn_data_streamer() {}

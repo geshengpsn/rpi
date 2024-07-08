@@ -9,7 +9,7 @@ pub mod aruco_finder;
 
 pub mod soft_finger;
 
-mod data_saver;
-mod data_streamer;
-mod imu;
-mod screen;
+pub mod data_saver;
+pub mod data_streamer;
+pub mod imu;
+mod ssd1306_screen;
