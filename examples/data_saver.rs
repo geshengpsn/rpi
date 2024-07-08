@@ -3,13 +3,14 @@ use std::io::stdin;
 use crossbeam::channel::unbounded;
 use rpi::{
     data_saver::{spawn_data_saver, Signal},
-    imu::spawn_imu,
+    imu::{spawn_imu, IMU},
 };
 
 fn main() {
     let (tx, rx) = unbounded();
     let (sig_tx, sig_rx) = unbounded();
-    spawn_imu(tx);
+    let imu = IMU::new("/dev/i2c-1");
+    spawn_imu(imu, tx);
     spawn_data_saver(rx, None, sig_rx);
     loop {
         let mut input = String::new();

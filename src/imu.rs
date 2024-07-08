@@ -1,16 +1,10 @@
-use std::{thread::spawn, time::Instant};
-
+use std::{thread::{spawn, JoinHandle}, time::Instant};
 use crossbeam::channel::Sender;
 use serde::Serialize;
-// use mpu6050::{Mpu6050, Mpu6050Error};
-// use mpu6050_dmp::
-// use linux_embedded_hal::i2cdev::linux::LinuxI2CDevice;
 use linux_embedded_hal::{Delay, I2cdev};
 use mpu6050_dmp::{
-    address::Address, calibration::CalibrationParameters, quaternion::Quaternion,
-    sensor::Mpu6050,
+    address::Address, calibration::CalibrationParameters, quaternion::Quaternion, sensor::Mpu6050,
 };
-
 use crate::data_saver::FrameData;
 
 #[derive(Debug, Clone, Serialize)]
@@ -25,15 +19,14 @@ impl FrameData for IMUData {
     }
 }
 
-#[allow(clippy::upper_case_acronyms)]
-struct IMU {
+pub struct IMU {
     mpu6050: Mpu6050<I2cdev>,
     buf: [u8; 28],
 }
 
 impl IMU {
-    fn new() -> Self {
-        let i2c = I2cdev::new("/dev/i2c-1").unwrap();
+    pub fn new(path: &str) -> Self {
+        let i2c = I2cdev::new(path).unwrap();
         let mpu6050 = Mpu6050::new(i2c, Address::default()).unwrap();
         Self {
             mpu6050,
@@ -41,7 +34,7 @@ impl IMU {
         }
     }
 
-    fn calibrate(&mut self) {
+    pub fn calibrate(&mut self) {
         let cali_param = CalibrationParameters::new(
             mpu6050_dmp::accel::AccelFullScale::G2,
             mpu6050_dmp::gyro::GyroFullScale::Deg2000,
@@ -55,10 +48,8 @@ impl IMU {
     }
 }
 
-pub fn spawn_imu(tx: Sender<IMUData>) {
+pub fn spawn_imu(mut imu: IMU, tx: Sender<IMUData>) -> JoinHandle<()> {
     spawn(move || {
-        let mut imu = IMU::new();
-        // imu.calibrate();
         imu.init();
         let start = Instant::now();
         loop {
@@ -73,5 +64,5 @@ pub fn spawn_imu(tx: Sender<IMUData>) {
                 tx.send(IMUData { quat, time_stamp }).expect("send imudata");
             }
         }
-    });
+    })
 }

@@ -16,8 +16,8 @@ pub trait FrameData: serde::Serialize + Send + Clone + 'static {
 }
 
 pub fn spawn_video_saver(
-    data_rx: Receiver<Mat>,
-    data_tx: Option<Sender<Mat>>,
+    data_rx: Receiver<(Mat, Duration)>,
+    data_tx: Option<Sender<(Mat, Duration)>>,
     signal_rx: Receiver<Signal>,
     width: u32,
     height: u32,
@@ -26,12 +26,12 @@ pub fn spawn_video_saver(
     spawn(move || {
         let fourcc = VideoWriter::fourcc('m', 'p', '4', 'v').unwrap();
         let mut video_wtr: VideoWriter = VideoWriter::default().unwrap();
-        while let Ok(img) = data_rx.recv() {
+        while let Ok(data) = data_rx.recv() {
             if let Some(tx) = data_tx.as_ref() {
-                tx.send(img.clone()).unwrap();
+                tx.send(data.clone()).unwrap();
             }
             if video_wtr.is_opened().unwrap() {
-                video_wtr.write(&img).unwrap();
+                video_wtr.write(&data.0).unwrap();
             }
             match signal_rx.try_recv() {
                 Ok(s) => match s {

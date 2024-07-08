@@ -1,9 +1,8 @@
-use std::thread::{spawn, JoinHandle};
+use std::{thread::{spawn, JoinHandle}, time::Duration};
 
 use crate::Result;
 use crossbeam::channel::{Receiver, Sender};
 use nalgebra::Rotation3;
-use nix::sys::time::TimeSpec;
 use opencv::{
     aruco::{
         detect_markers_def, estimate_pose_single_markers_def, get_predefined_dictionary,
@@ -18,7 +17,7 @@ pub struct Aruco {
     pub id: i32,
     pub trans: [f64; 3],
     pub euler_angles: [f64; 3],
-    pub time_stamp: TimeSpec,
+    pub time_stamp: Duration,
 }
 
 pub struct ArucoIntrinsic {
@@ -110,7 +109,7 @@ impl ArucoFinder {
         }
     }
 
-    pub fn find(&self, img: &Mat, time_stamp: TimeSpec, arucos: &mut Vec<Aruco>) -> Result<()> {
+    pub fn find(&self, img: &Mat, time_stamp: Duration, arucos: &mut Vec<Aruco>) -> Result<()> {
         arucos.clear();
         let mut corners = Vector::<Vector<Point2f>>::new();
         let mut ids = Vector::<i32>::new();
@@ -145,7 +144,7 @@ impl ArucoFinder {
 }
 
 pub fn spawn_aruco_finder(
-    rx: Receiver<(Mat, TimeSpec)>,
+    rx: Receiver<(Mat, Duration)>,
     tx: Sender<Vec<Aruco>>,
     setting: ArucoFinderSetting,
 ) -> JoinHandle<Result<()>> {
@@ -158,38 +157,4 @@ pub fn spawn_aruco_finder(
             tx.send(arucos.clone()).unwrap();
         }
     })
-}
-
-#[test]
-fn aruco_finder_test() {
-    use crate::usb_camera::{mat_from_ptr, Camera};
-    use opencv::highgui;
-    let mut cam = Camera::new(0, 1280, 720, 30).unwrap();
-    let cx = 655.3664;
-    let cy = 367.5246;
-    let fx = 971.2252;
-    let fy = 970.7470;
-    let k1 = 0.0097;
-    let k2 = -0.00745;
-    let k3 = 0.00;
-    let p1 = 0.00;
-    let p2 = 0.00;
-    let setting = ArucoFinderSetting {
-        aruco_intrinsic: ArucoIntrinsic::new_with_marker_length(0.05),
-        camera_intrinsic: CameraIntrinsic { cx, cy, fx, fy },
-        camera_distortion: CameraDistortion::from_5_params(k1, k2, p1, p2, k3),
-    };
-    let finder = ArucoFinder::new(setting);
-    let mut arucos = vec![];
-    loop {
-        let (raw_img, time_stamp) = cam.capture().unwrap();
-        let img = mat_from_ptr(raw_img.as_ptr(), 1280, 720).unwrap();
-        finder.find(&img, time_stamp, &mut arucos).unwrap();
-        highgui::imshow("camera viwer", &img).unwrap();
-        let code = highgui::wait_key(1).unwrap();
-        if let Some('q') = char::from_u32(code as u32) {
-            return;
-        }
-        println!("{arucos:?}");
-    }
 }

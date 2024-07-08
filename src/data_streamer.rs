@@ -8,6 +8,7 @@ use axum::{
     Router,
 };
 use crossbeam::channel::{unbounded, Receiver, Sender, TrySendError};
+use futures::{SinkExt, StreamExt};
 use opencv::{
     core::{Mat, Vector, VectorToVec},
     imgcodecs::imencode_def,
@@ -17,7 +18,7 @@ use tokio::net::ToSocketAddrs;
 use std::{
     net::SocketAddr,
     sync::{Arc, Mutex},
-    thread::spawn,
+    thread::{spawn, JoinHandle}, time::Duration,
 };
 
 use tower_http::{
@@ -30,27 +31,42 @@ use axum::extract::connect_info::ConnectInfo;
 
 use crate::data_saver::FrameData;
 
-pub fn spawn_video_streaming<A: ToSocketAddrs>(rx: Receiver<Mat>, tx: Sender<Mat>, addr: A, path: &str) {
-    let (web_tx, web_rx) = unbounded();
-    spawn(move || {
-        while let Ok(data) = rx.recv() {
-            let data_copy = data.clone();
-            if let Err(TrySendError::Disconnected(_)) = web_tx.try_send(data) {
-                panic!("web_tx disconnected")
+pub fn spawn_video_streaming<A: ToSocketAddrs + Send + 'static>(
+    rx: Receiver<(Mat, Duration)>,
+    tx: Option<Sender<(Mat, Duration)>>,
+    addr: A,
+    path: String,
+) -> JoinHandle<()> {
+    let web_rx = if tx.is_some() {
+        let (web_tx, web_rx) = unbounded();
+        spawn(move || {
+            while let Ok(data) = rx.recv() {
+                let data_copy = data.clone();
+                if let Err(TrySendError::Disconnected(_)) = web_tx.try_send(data) {
+                    panic!("web_tx disconnected")
+                }
+                if let Some(t) = tx.as_ref() {
+                    t.send(data_copy).unwrap();
+                }
             }
-            tx.send(data_copy).unwrap();
-        }
-    });
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(serve_video_streaming(web_rx, addr, path));
+        });
+        web_rx
+    } else {
+        rx
+    };
+    
+    spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(serve_video_streaming(web_rx, addr, path.as_str()))
+    })
 }
 
 struct VideoAppState {
-    rx: Receiver<Mat>,
+    rx: Receiver<(Mat, Duration)>,
     owner: Mutex<Option<SocketAddr>>,
 }
 
-async fn serve_video_streaming<A: ToSocketAddrs>(rx: Receiver<Mat>, addr: A, path: &str) {
+async fn serve_video_streaming<A: ToSocketAddrs>(rx: Receiver<(Mat, Duration)>, addr: A, path: &str) {
     let state = Arc::new(VideoAppState {
         rx,
         owner: Mutex::new(None),
@@ -65,9 +81,7 @@ async fn serve_video_streaming<A: ToSocketAddrs>(rx: Receiver<Mat>, addr: A, pat
         .layer(CorsLayer::new().allow_origin(Any))
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -85,40 +99,85 @@ async fn ws_video_streaming_handler(
 }
 
 async fn handle_video_streaming_socket(
-    mut socket: WebSocket,
+    socket: WebSocket,
     state: Arc<VideoAppState>,
     addr: SocketAddr,
 ) {
-    if state.owner.lock().unwrap().is_some() {
-        socket
-            .send(Message::Text(String::from("Username already taken.")))
-            .await
-            .unwrap();
-    } else {
-        {
-            state.owner.lock().unwrap().replace(addr);
+    let end_state = state.clone();
+    {
+        let mut owner = state.owner.lock().unwrap();
+        match owner.as_ref() {
+            Some(current_addr) => {
+                if addr != *current_addr {
+                    return;
+                }
+            }
+            None => {
+                // new owner
+                println!("new: {addr}");
+                owner.replace(addr);
+            }
         }
-        while let Ok(data) = state.rx.recv() {
+    }
+    let (mut sender, mut receiver) = socket.split();
+    // Spawn a task that will push several messages to the client (does not matter what client does)
+    let mut send_task = tokio::spawn(async move {
+        while let Ok((data, duration)) = state.rx.recv() {
             let mut v = Vector::<u8>::new();
             imencode_def(".jpg", &data, &mut v).unwrap();
-            let _ = socket.send(Message::Binary(v.to_vec())).await;
+            let _ = sender.send(Message::Binary(v.to_vec())).await;
+            let _ = sender.send(Message::Text(serde_json::to_string(&duration).unwrap())).await;
+        }
+    });
+
+    // This second task will receive messages from client and print them on server console
+    let mut recv_close = tokio::spawn(async move {
+        while let Some(Ok(msg)) = receiver.next().await {
+            if let Message::Close(_) = msg {
+                end_state.owner.lock().unwrap().take();
+                break;
+            }
+        }
+    });
+
+    // If any one of the tasks exit, abort the other.
+    tokio::select! {
+        _ = (&mut send_task) => {
+            recv_close.abort();
+        },
+        _ = (&mut recv_close) => {
+            send_task.abort();
         }
     }
 }
 
-pub fn spawn_data_streaming<D: FrameData, A: ToSocketAddrs>(rx: Receiver<D>, tx: Sender<D>, addr: A, path: &str) {
-    let (web_tx, web_rx) = unbounded();
-    spawn(move || {
-        while let Ok(data) = rx.recv() {
-            let data_copy = data.clone();
-            if let Err(TrySendError::Disconnected(_)) = web_tx.try_send(data) {
-                panic!("web_tx disconnected")
+pub fn spawn_data_streaming<D: FrameData, A: ToSocketAddrs + Send + 'static>(
+    rx: Receiver<D>,
+    tx: Option<Sender<D>>,
+    addr: A,
+    path: String,
+) -> JoinHandle<()> {
+    let web_rx = if tx.is_some() {
+        let (web_tx, web_rx) = unbounded();
+        spawn(move || {
+            while let Ok(data) = rx.recv() {
+                let data_copy = data.clone();
+                if let Err(TrySendError::Disconnected(_)) = web_tx.try_send(data) {
+                    panic!("web_tx disconnected")
+                }
+                if let Some(t) = tx.as_ref() {
+                    t.send(data_copy).unwrap();
+                }
             }
-            tx.send(data_copy).unwrap();
-        }
-    });
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(serve_data_streaming(web_rx, addr, path));
+        });
+        web_rx
+    } else {
+        rx
+    };
+    spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(serve_data_streaming(web_rx, addr, path.as_str()))
+    })
 }
 
 struct AppState<D: FrameData> {
@@ -126,7 +185,11 @@ struct AppState<D: FrameData> {
     owner: Mutex<Option<SocketAddr>>,
 }
 
-async fn serve_data_streaming<D: FrameData, A: ToSocketAddrs>(rx: Receiver<D>, addr: A, path: &str) {
+async fn serve_data_streaming<D: FrameData, A: ToSocketAddrs>(
+    rx: Receiver<D>,
+    addr: A,
+    path: &str,
+) {
     let state = Arc::new(AppState {
         rx,
         owner: Mutex::new(None),
@@ -140,9 +203,7 @@ async fn serve_data_streaming<D: FrameData, A: ToSocketAddrs>(rx: Receiver<D>, a
         .layer(CorsLayer::new().allow_origin(Any))
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind(addr)
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
@@ -160,23 +221,53 @@ async fn ws_streaming_handler<D: FrameData>(
 }
 
 async fn handle_streaming_socket<D: FrameData>(
-    mut socket: WebSocket,
+    socket: WebSocket,
     state: Arc<AppState<D>>,
     addr: SocketAddr,
 ) {
-    if state.owner.lock().unwrap().is_some() {
-        socket
-            .send(Message::Text(String::from("Username already taken.")))
-            .await
-            .unwrap();
-    } else {
-        {
-            state.owner.lock().unwrap().replace(addr);
+    let end_state = state.clone();
+    {
+        let mut owner = state.owner.lock().unwrap();
+        match owner.as_ref() {
+            Some(current_addr) => {
+                if addr != *current_addr {
+                    return;
+                }
+            }
+            None => {
+                // new owner
+                println!("new: {addr}");
+                owner.replace(addr);
+            }
         }
+    }
+    let (mut sender, mut receiver) = socket.split();
+    // Spawn a task that will push several messages to the client (does not matter what client does)
+    let mut send_task = tokio::spawn(async move {
         while let Ok(data) = state.rx.recv() {
-            let _ = socket
+            let _ = sender
                 .send(Message::Text(serde_json::to_string(&data).unwrap()))
                 .await;
+        }
+    });
+
+    // This second task will receive messages from client and print them on server console
+    let mut recv_close = tokio::spawn(async move {
+        while let Some(Ok(msg)) = receiver.next().await {
+            if let Message::Close(_) = msg {
+                end_state.owner.lock().unwrap().take();
+                break;
+            }
+        }
+    });
+
+    // If any one of the tasks exit, abort the other.
+    tokio::select! {
+        _ = (&mut send_task) => {
+            recv_close.abort();
+        },
+        _ = (&mut recv_close) => {
+            send_task.abort();
         }
     }
 }

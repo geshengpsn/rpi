@@ -1,11 +1,10 @@
 use std::{
     io,
-    thread::{spawn, JoinHandle},
+    thread::{spawn, JoinHandle}, time::Duration,
 };
 
 use crate::Result;
 use crossbeam::channel::Sender;
-use nix::sys::time::TimeSpec;
 use opencv::{
     core::{Mat, CV_8UC3},
     imgproc::{cvt_color_def, COLOR_RGB2BGR},
@@ -105,7 +104,7 @@ impl Camera<'_> {
         self.stream = Some(stream);
     }
 
-    pub fn capture(&mut self) -> Result<(&[u8], TimeSpec)> {
+    pub fn capture(&mut self) -> Result<(&[u8], Duration)> {
         use zune_jpeg::JpegDecoder;
         assert!(self.stream.is_some());
 
@@ -120,18 +119,18 @@ impl Camera<'_> {
         
         Ok((
             &self.rgb_buffer,
-            TimeSpec::new(timestamp.sec, timestamp.usec * 1000),
+            Duration::new(timestamp.sec as u64, (timestamp.usec * 1000) as u32),
         ))
     }
 }
 
 pub fn spawn_usb_camera(
-    tx: Sender<(Mat, TimeSpec)>,
+    tx: Sender<(Mat, Duration)>,
     aruco_camera_index: usize,
     width: u32,
     height: u32,
     fps: u32,
-) -> JoinHandle<Result<()>> {
+) -> JoinHandle<()> {
     spawn(move || {
         let mut cam = Camera::new(aruco_camera_index, width, height, fps).expect("camera bad parameters");
         loop {

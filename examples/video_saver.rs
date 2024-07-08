@@ -1,26 +1,28 @@
-use std::time::{Duration, Instant};
+use std::io::stdin;
 
-use opencv::{
-    core::Size,
-    videoio::{VideoWriter, VideoWriterTrait},
+use rpi::{
+    data_saver::{spawn_video_saver, Signal},
+    usb_camera::spawn_usb_camera,
 };
-
-use rpi::usb_camera::spawn_usb_camera;
 
 fn main() {
     let (tx, rx) = crossbeam::channel::unbounded();
+    let (sig_tx, sig_rx) = crossbeam::channel::unbounded();
     spawn_usb_camera(tx, 0, 1280, 720, 30);
-    let fourcc = VideoWriter::fourcc('m', 'p', '4', 'v').unwrap();
-    let mut vw = VideoWriter::new("test.mp4", fourcc, 30., Size::new(1280, 720), true).unwrap();
-
-    println!("start");
-    let start = Instant::now();
-    while let Ok((img, _)) = rx.recv() {
-        vw.write(&img).unwrap();
-        if start.elapsed() >= Duration::from_secs(5) {
-            break;
+    spawn_video_saver(rx, None, sig_rx, 1280, 720, 30);
+    loop {
+        let mut input = String::new();
+        stdin().read_line(&mut input).expect("input");
+        match input.as_str() {
+            "start\n" => {
+                sig_tx.send(Signal::Start("test.mp4".into())).unwrap();
+            }
+            "stop\n" => {
+                sig_tx.send(Signal::End).unwrap();
+            }
+            input => {
+                println!("bad input:{input}")
+            }
         }
     }
-    println!("end");
-    // vw.release()
 }
