@@ -507,7 +507,7 @@ dependencies = [
  "burn-common",
  "burn-tensor",
  "derive-new",
- "libm 0.2.8",
+ "libm",
  "matrixmultiply",
  "ndarray",
  "num-traits",
@@ -1032,15 +1032,6 @@ name = "data-encoding"
 version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8566979429cf69b49a5c740c60791108e86440e8be149bbea4fe54d2c32d6e2"
-
-[[package]]
-name = "dcmimu"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "692b1c8923315ac22103c1890512597baf543b95f2eebd66f572ffb1ff8f0170"
-dependencies = [
- "libm 0.1.4",
-]
 
 [[package]]
 name = "deranged"
@@ -2134,12 +2125,6 @@ dependencies = [
 
 [[package]]
 name = "libm"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fc7aa29613bd6a620df431842069224d8bc9011086b1db4c0e0cd47fa03ec9a"
-
-[[package]]
-name = "libm"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
@@ -2372,7 +2357,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "abd67852b244bcca82aa14dd89d50795c065fa598e435c0fe2724663f6e3b9f2"
 dependencies = [
  "embedded-hal 0.2.7",
- "libm 0.2.8",
+ "libm",
  "nalgebra 0.31.4",
 ]
 
@@ -2383,7 +2368,7 @@ source = "git+https://github.com/barafael/mpu6050-dmp-rs.git#95c1a6d7471df98122a
 dependencies = [
  "embedded-hal 1.0.0",
  "embedded-hal-async",
- "libm 0.2.8",
+ "libm",
 ]
 
 [[package]]
@@ -2618,7 +2603,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
- "libm 0.2.8",
+ "libm",
 ]
 
 [[package]]
@@ -2966,7 +2951,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ec8d02258294f59e4e223b41ad7e81c874aa6b15bc4ced9ba3965826da0eed5"
 dependencies = [
  "bytemuck",
- "libm 0.2.8",
+ "libm",
  "num-complex",
  "reborrow",
 ]
@@ -3241,7 +3226,6 @@ dependencies = [
  "burn-ndarray",
  "crossbeam",
  "csv",
- "dcmimu",
  "embedded-graphics",
  "futures",
  "linux-embedded-hal",

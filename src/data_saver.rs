@@ -1,4 +1,4 @@
-use std::{io::BufWriter, thread::spawn, time::Duration};
+use std::{io::BufWriter, thread::{spawn, JoinHandle}, time::Duration};
 
 use crossbeam::channel::{Receiver, Sender};
 use opencv::{
@@ -22,7 +22,7 @@ pub fn spawn_video_saver(
     width: u32,
     height: u32,
     fps: u32,
-) {
+) -> JoinHandle<()> {
     spawn(move || {
         let fourcc = VideoWriter::fourcc('m', 'p', '4', 'v').unwrap();
         let mut video_wtr: VideoWriter = VideoWriter::default().unwrap();
@@ -59,14 +59,14 @@ pub fn spawn_video_saver(
                 _ => {}
             }
         }
-    });
+    })
 }
 
 pub fn spawn_data_saver<FD: FrameData>(
     data_rx: Receiver<FD>,
     data_tx: Option<Sender<FD>>,
     signal_rx: Receiver<Signal>,
-) {
+) -> JoinHandle<()> {
     spawn(move || {
         let mut csv_wtr: Option<csv::Writer<BufWriter<std::fs::File>>> = None;
         while let Ok(data) = data_rx.recv() {
@@ -105,5 +105,5 @@ pub fn spawn_data_saver<FD: FrameData>(
                 _ => {}
             }
         }
-    });
+    })
 }
