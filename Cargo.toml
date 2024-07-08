@@ -50,3 +50,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # i2c screen
 ssd1306 = "0.8.4"
 embedded-graphics = "0.8.1"
+
+[profile.release]
+debug = true

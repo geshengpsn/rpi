@@ -7,7 +7,7 @@ use axum::{
     routing::get,
     Router,
 };
-use crossbeam::channel::{unbounded, Receiver, Sender, TrySendError};
+use crossbeam::channel::Receiver;
 use futures::{SinkExt, StreamExt};
 use opencv::{
     core::{Mat, Vector, VectorToVec},
@@ -18,7 +18,8 @@ use tokio::net::ToSocketAddrs;
 use std::{
     net::SocketAddr,
     sync::{Arc, Mutex},
-    thread::{spawn, JoinHandle}, time::Duration,
+    thread::{spawn, JoinHandle},
+    time::Duration,
 };
 
 use tower_http::{
@@ -33,31 +34,12 @@ use crate::data_saver::FrameData;
 
 pub fn spawn_video_streaming<A: ToSocketAddrs + Send + 'static>(
     rx: Receiver<(Mat, Duration)>,
-    tx: Option<Sender<(Mat, Duration)>>,
     addr: A,
     path: String,
 ) -> JoinHandle<()> {
-    let web_rx = if tx.is_some() {
-        let (web_tx, web_rx) = unbounded();
-        spawn(move || {
-            while let Ok(data) = rx.recv() {
-                let data_copy = data.clone();
-                if let Err(TrySendError::Disconnected(_)) = web_tx.try_send(data) {
-                    panic!("web_tx disconnected")
-                }
-                if let Some(t) = tx.as_ref() {
-                    t.send(data_copy).unwrap();
-                }
-            }
-        });
-        web_rx
-    } else {
-        rx
-    };
-    
     spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(serve_video_streaming(web_rx, addr, path.as_str()))
+        rt.block_on(serve_video_streaming(rx, addr, path.as_str()))
     })
 }
 
@@ -66,7 +48,11 @@ struct VideoAppState {
     owner: Mutex<Option<SocketAddr>>,
 }
 
-async fn serve_video_streaming<A: ToSocketAddrs>(rx: Receiver<(Mat, Duration)>, addr: A, path: &str) {
+async fn serve_video_streaming<A: ToSocketAddrs>(
+    rx: Receiver<(Mat, Duration)>,
+    addr: A,
+    path: &str,
+) {
     let state = Arc::new(VideoAppState {
         rx,
         owner: Mutex::new(None),
@@ -126,17 +112,30 @@ async fn handle_video_streaming_socket(
             let mut v = Vector::<u8>::new();
             imencode_def(".jpg", &data, &mut v).unwrap();
             let _ = sender.send(Message::Binary(v.to_vec())).await;
-            let _ = sender.send(Message::Text(serde_json::to_string(&duration).unwrap())).await;
+            let _ = sender
+                .send(Message::Text(serde_json::to_string(&duration).unwrap()))
+                .await;
         }
     });
 
     // This second task will receive messages from client and print them on server console
     let mut recv_close = tokio::spawn(async move {
         while let Some(Ok(msg)) = receiver.next().await {
-            if let Message::Close(_) = msg {
-                end_state.owner.lock().unwrap().take();
-                break;
+            match msg {
+                Message::Close(_) => {
+                    println!("close: {addr}");
+                    end_state.owner.lock().unwrap().take();
+                    break;
+                }
+                m => {
+                    println!("{m:?}");
+                }
             }
+            // if let Message::Close(_) = msg {
+            //     println!("close: {addr}");
+            //     end_state.owner.lock().unwrap().take();
+            //     break;
+            // }
         }
     });
 
@@ -153,30 +152,12 @@ async fn handle_video_streaming_socket(
 
 pub fn spawn_data_streaming<D: FrameData, A: ToSocketAddrs + Send + 'static>(
     rx: Receiver<D>,
-    tx: Option<Sender<D>>,
     addr: A,
     path: String,
 ) -> JoinHandle<()> {
-    let web_rx = if tx.is_some() {
-        let (web_tx, web_rx) = unbounded();
-        spawn(move || {
-            while let Ok(data) = rx.recv() {
-                let data_copy = data.clone();
-                if let Err(TrySendError::Disconnected(_)) = web_tx.try_send(data) {
-                    panic!("web_tx disconnected")
-                }
-                if let Some(t) = tx.as_ref() {
-                    t.send(data_copy).unwrap();
-                }
-            }
-        });
-        web_rx
-    } else {
-        rx
-    };
     spawn(move || {
         let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(serve_data_streaming(web_rx, addr, path.as_str()))
+        rt.block_on(serve_data_streaming(rx, addr, path.as_str()))
     })
 }
 
