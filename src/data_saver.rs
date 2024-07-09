@@ -5,10 +5,23 @@ use std::{
 };
 
 use crossbeam::channel::Receiver;
+use tokio::sync::{
+    broadcast::{self, Receiver as BroadcastReceiver},
+    mpsc::{self, Receiver as MpscReceiver},
+};
+
 use opencv::{
     core::{Mat, Size},
     videoio::{VideoWriter, VideoWriterTrait, VideoWriterTraitConst},
 };
+use tracing::debug;
+
+pub enum Command {
+    StartRecord(String),
+    EndRecord,
+}
+
+// pub enum
 
 pub enum Signal {
     Start(String),
@@ -17,6 +30,48 @@ pub enum Signal {
 
 pub trait FrameData: serde::Serialize + Send + Clone + 'static {
     fn time_stamp(&self) -> Duration;
+}
+
+pub async fn video_saver(
+    mut data_rx: mpsc::Receiver<(Mat, Duration)>,
+    mut cmd_rx: mpsc::Receiver<Command>,
+    width: u32,
+    height: u32,
+    fps: u32,
+) {
+    let fourcc = VideoWriter::fourcc('m', 'p', '4', 'v').unwrap();
+    let mut video_wtr: VideoWriter = VideoWriter::default().unwrap();
+    loop {
+        tokio::select! {
+            Some((img, _)) = data_rx.recv() => {
+                if video_wtr.is_opened().unwrap() {
+                    debug!("write");
+                    video_wtr.write(&img).unwrap();
+                }
+            },
+
+            Some(cmd) = cmd_rx.recv() => {
+                match cmd {
+                    Command::StartRecord(path) => {
+                        video_wtr
+                            .open(
+                                &path,
+                                fourcc,
+                                fps as f64,
+                                Size::new(width as i32, height as i32),
+                                true,
+                            )
+                            .unwrap();
+                    }
+                    Command::EndRecord => {
+                        if video_wtr.is_opened().unwrap() {
+                            video_wtr.release().unwrap();
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub fn spawn_video_saver(

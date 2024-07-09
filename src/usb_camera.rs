@@ -1,6 +1,7 @@
 use std::{
     io,
-    thread::{spawn, JoinHandle}, time::Duration,
+    thread::{spawn, JoinHandle},
+    time::Duration,
 };
 
 use crate::Result;
@@ -9,7 +10,9 @@ use opencv::{
     core::{Mat, CV_8UC3},
     imgproc::{cvt_color_def, COLOR_RGB2BGR},
 };
+
 use std::fmt::Debug;
+use tokio::sync::mpsc;
 use v4l::{
     buffer::Metadata,
     frameinterval::FrameIntervalEnum,
@@ -104,9 +107,21 @@ impl Camera<'_> {
         self.stream = Some(stream);
     }
 
+    pub fn capture_mjpeg(&mut self) -> Result<(Vec<u8>, Duration)> {
+        assert!(self.stream.is_some());
+
+        // let start = std::time::Instant::now();
+        let (raw_mjpeg, Metadata { timestamp, .. }) = self.stream.as_mut().unwrap().next()?;
+        // println!("      stream next {:?}", start.elapsed());
+
+        Ok((
+            raw_mjpeg.to_vec(),
+            Duration::new(timestamp.sec as u64, (timestamp.usec * 1000) as u32),
+        ))
+    }
+
     pub fn capture(&mut self) -> Result<(&[u8], Duration)> {
         use zune_jpeg::JpegDecoder;
-        assert!(self.stream.is_some());
 
         // let start = std::time::Instant::now();
         let (raw_mjpeg, Metadata { timestamp, .. }) = self.stream.as_mut().unwrap().next()?;
@@ -115,13 +130,21 @@ impl Camera<'_> {
         // let start = std::time::Instant::now();
         let mut decoder = JpegDecoder::new(raw_mjpeg);
         decoder.decode_into(&mut self.rgb_buffer).unwrap(); // shouldn't happend
-        // println!("      decode {:?}", start.elapsed());
-        
+                                                            // println!("      decode {:?}", start.elapsed());
+
         Ok((
             &self.rgb_buffer,
             Duration::new(timestamp.sec as u64, (timestamp.usec * 1000) as u32),
         ))
     }
+}
+
+pub fn mat_from_ptr(ptr: *const u8, width: i32, height: i32) -> Result<Mat> {
+    let img =
+        unsafe { Mat::new_rows_cols_with_data_unsafe_def(height, width, CV_8UC3, ptr as *mut _) }?;
+    let mut res_img = Mat::default();
+    cvt_color_def(&img, &mut res_img, COLOR_RGB2BGR)?;
+    Ok(res_img)
 }
 
 pub fn spawn_usb_camera(
@@ -132,7 +155,8 @@ pub fn spawn_usb_camera(
     fps: u32,
 ) -> JoinHandle<()> {
     spawn(move || {
-        let mut cam = Camera::new(aruco_camera_index, width, height, fps).expect("camera bad parameters");
+        let mut cam =
+            Camera::new(aruco_camera_index, width, height, fps).expect("camera bad parameters");
         loop {
             // let start = std::time::Instant::now();
             let (raw_img, ts) = cam.capture().unwrap();
@@ -144,15 +168,25 @@ pub fn spawn_usb_camera(
 
             // let start = std::time::Instant::now();
             tx.send((img, ts)).unwrap();
+            // print!(">");
             // println!("  send {:?}", start.elapsed());
         }
     })
 }
 
-pub fn mat_from_ptr(ptr: *const u8, width: i32, height: i32) -> Result<Mat> {
-    let img =
-        unsafe { Mat::new_rows_cols_with_data_unsafe_def(height, width, CV_8UC3, ptr as *mut _) }?;
-    let mut res_img = Mat::default();
-    cvt_color_def(&img, &mut res_img, COLOR_RGB2BGR)?;
-    Ok(res_img)
+pub async fn usbcamera(
+    tx: mpsc::Sender<(Mat, Duration)>,
+    aruco_camera_index: usize,
+    width: u32,
+    height: u32,
+    fps: u32,
+) {
+    let mut cam =
+        Camera::new(aruco_camera_index, width, height, fps).expect("camera bad parameters");
+    loop {
+        let (raw_img, ts) = cam.capture().unwrap();
+        let img = mat_from_ptr(raw_img.as_ptr(), width as i32, height as i32).unwrap();
+        tx.send((img, ts)).await.unwrap();
+        tracing::debug!("camera capture");
+    }
 }

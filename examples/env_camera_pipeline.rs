@@ -1,23 +1,4 @@
-use crossbeam::channel::unbounded;
-use rpi::{
-    aruco_finder::{
-        spawn_aruco_finder, ArucoFinderSetting, ArucoIntrinsic, CameraDistortion, CameraIntrinsic,
-    },
-    data_saver::spawn_video_saver,
-    data_streamer::spawn_video_streaming,
-    rx_hub::rx_hub3,
-    usb_camera::spawn_usb_camera,
-};
-
 fn main() {
-    let (tx, rx) = unbounded();
-    let (rx1, rx2, rx3) = rx_hub3(rx);
-    // let (aruco_tx, aruco_rx) = unbounded();
-    let (sig_tx, sig_rx) = unbounded();
-
-    let j = spawn_usb_camera(tx, 0, 1280, 720, 60);
-    spawn_video_saver(rx1, sig_rx, 1280, 720, 60);
-    spawn_video_streaming(rx2, "0.0.0.0:8080", "/video".into());
     // let cx = 655.3664;
     // let cy = 367.5246;
     // let fx = 971.2252;
@@ -38,5 +19,4 @@ fn main() {
     //         println!("{arucos:?}");
     //     }
     // }
-    j.join().unwrap();
 }

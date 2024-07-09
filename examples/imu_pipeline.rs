@@ -3,7 +3,10 @@ use std::io::stdin;
 use crossbeam::channel::unbounded;
 
 use rpi::{
-    data_saver::{spawn_data_saver, Signal}, data_streamer::spawn_data_streaming, imu::{spawn_imu, IMU}, rx_hub::rx_hub2
+    data_saver::{spawn_data_saver, Signal},
+    data_streamer::spawn_data_streaming,
+    imu::{spawn_imu, IMU},
+    rx_hub::rx_hub2,
 };
 
 fn main() {
