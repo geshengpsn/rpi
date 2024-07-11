@@ -30,18 +30,6 @@ impl From<zune_jpeg::errors::DecodeErrors> for Error {
     }
 }
 
-impl<T> From<crossbeam::channel::SendError<T>> for Error {
-    fn from(_: crossbeam::channel::SendError<T>) -> Self {
-        Error::ChannelSend
-    }
-}
-
-impl From<crossbeam::channel::RecvError> for Error {
-    fn from(_: crossbeam::channel::RecvError) -> Self {
-        Error::ChannelRecv
-    }
-}
-
 impl<T> From<PoisonError<T>> for Error {
     fn from(_: PoisonError<T>) -> Self {
         Error::Lock

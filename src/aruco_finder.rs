@@ -1,7 +1,6 @@
-use std::{thread::{spawn, JoinHandle}, time::Duration};
+use std::time::Duration;
 
 use crate::Result;
-use crossbeam::channel::{Receiver, Sender};
 use nalgebra::Rotation3;
 use opencv::{
     aruco::{
@@ -9,7 +8,7 @@ use opencv::{
         Dictionary, PREDEFINED_DICTIONARY_NAME,
     },
     calib3d::rodrigues_def,
-    core::{Mat, MatTraitConstManual, Point2f, Ptr, Vec3d, Vector},
+    core::{Mat, MatTraitConstManual, Point2f, Ptr, ToInputArray, Vec3d, Vector},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -109,13 +108,18 @@ impl ArucoFinder {
         }
     }
 
-    pub fn find(&self, img: &Mat, time_stamp: Duration, arucos: &mut Vec<Aruco>) -> Result<()> {
+    pub fn find(
+        &self,
+        img: &impl ToInputArray,
+        time_stamp: Duration,
+        arucos: &mut Vec<Aruco>,
+    ) -> Result<()> {
         arucos.clear();
         let mut corners = Vector::<Vector<Point2f>>::new();
         let mut ids = Vector::<i32>::new();
         let mut rvecs = Vector::<Vec3d>::new();
         let mut tvecs = Vector::<Vec3d>::new();
-        detect_markers_def(&img, &self.dictionary, &mut corners, &mut ids)?;
+        detect_markers_def(img, &self.dictionary, &mut corners, &mut ids)?;
         if corners.is_empty() {
             return Ok(());
         }
@@ -141,20 +145,4 @@ impl ArucoFinder {
         }
         Ok(())
     }
-}
-
-pub fn spawn_aruco_finder(
-    rx: Receiver<(Mat, Duration)>,
-    tx: Sender<Vec<Aruco>>,
-    setting: ArucoFinderSetting,
-) -> JoinHandle<Result<()>> {
-    spawn(move || {
-        let aruco_finder = ArucoFinder::new(setting);
-        let mut arucos = vec![];
-        loop {
-            let (img, time_stamp) = rx.recv().unwrap();
-            aruco_finder.find(&img, time_stamp, &mut arucos).unwrap();
-            tx.send(arucos.clone()).unwrap();
-        }
-    })
 }

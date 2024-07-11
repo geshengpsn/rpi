@@ -1,18 +1,13 @@
-use std::{
-    io,
-    thread::{spawn, JoinHandle},
-    time::Duration,
-};
+use std::{io, time::Duration};
 
 use crate::Result;
-use crossbeam::channel::Sender;
-use opencv::{
-    core::{Mat, CV_8UC3},
-    imgproc::{cvt_color_def, COLOR_RGB2BGR},
-};
+// use opencv::{
+//     core::{Mat, CV_8UC3},
+//     imgproc::{cvt_color_def, COLOR_RGB2BGR},
+// };
 
 use std::fmt::Debug;
-use tokio::sync::mpsc;
+// use tokio::sync::mpsc;
 use v4l::{
     buffer::Metadata,
     frameinterval::FrameIntervalEnum,
@@ -75,10 +70,18 @@ impl Camera<'_> {
                 }
             }
         }
+
+        // let caps = device.query_controls().unwrap();
+        // device.set_control(Control{
+        //     id: 0x00980900,
+        //     value: v4l::control::Value::Integer(64)
+        // }).unwrap();
+        // println!("{caps}");
         if choosed_format.is_none() {
             // 可能是参数设置不好，don’t panic
             return Err(io::Error::other("no camera availbale"))?;
         }
+
         let (width, height, fourcc) = choosed_format.unwrap();
         let real_format = device
             .set_format(&Format::new(width, height, fourcc))
@@ -139,54 +142,28 @@ impl Camera<'_> {
     }
 }
 
-pub fn mat_from_ptr(ptr: *const u8, width: i32, height: i32) -> Result<Mat> {
-    let img =
-        unsafe { Mat::new_rows_cols_with_data_unsafe_def(height, width, CV_8UC3, ptr as *mut _) }?;
-    let mut res_img = Mat::default();
-    cvt_color_def(&img, &mut res_img, COLOR_RGB2BGR)?;
-    Ok(res_img)
-}
+// pub fn mat_from_ptr(ptr: *const u8, width: i32, height: i32) -> Result<Mat> {
+//     let img =
+//         unsafe { Mat::new_rows_cols_with_data_unsafe_def(height, width, CV_8UC3, ptr as *mut _) }?;
+//     let mut res_img = Mat::default();
+//     cvt_color_def(&img, &mut res_img, COLOR_RGB2BGR)?;
+//     Ok(res_img)
+// }
 
-pub fn spawn_usb_camera(
-    tx: Sender<(Mat, Duration)>,
-    aruco_camera_index: usize,
-    width: u32,
-    height: u32,
-    fps: u32,
-) -> JoinHandle<()> {
-    spawn(move || {
-        let mut cam =
-            Camera::new(aruco_camera_index, width, height, fps).expect("camera bad parameters");
-        loop {
-            // let start = std::time::Instant::now();
-            let (raw_img, ts) = cam.capture().unwrap();
-            // println!("  capture {:?}", start.elapsed());
-
-            // let start = std::time::Instant::now();
-            let img = mat_from_ptr(raw_img.as_ptr(), width as i32, height as i32).unwrap();
-            // println!("  mat_from_ptr {:?}", start.elapsed());
-
-            // let start = std::time::Instant::now();
-            tx.send((img, ts)).unwrap();
-            // print!(">");
-            // println!("  send {:?}", start.elapsed());
-        }
-    })
-}
-
-pub async fn usbcamera(
-    tx: mpsc::Sender<(Mat, Duration)>,
-    aruco_camera_index: usize,
-    width: u32,
-    height: u32,
-    fps: u32,
-) {
-    let mut cam =
-        Camera::new(aruco_camera_index, width, height, fps).expect("camera bad parameters");
-    loop {
-        let (raw_img, ts) = cam.capture().unwrap();
-        let img = mat_from_ptr(raw_img.as_ptr(), width as i32, height as i32).unwrap();
-        tx.send((img, ts)).await.unwrap();
-        tracing::debug!("camera capture");
-    }
-}
+// pub async fn usbcamera(
+//     tx: mpsc::Sender<(Mat, Duration)>,
+//     aruco_camera_index: usize,
+//     width: u32,
+//     height: u32,
+//     fps: u32,
+// ) {
+//     let mut cam =
+//         Camera::new(aruco_camera_index, width, height, fps).expect("camera bad parameters");
+//     loop {
+//         let (raw_img, ts) = cam.capture().unwrap();
+//         let img = mat_from_ptr(raw_img.as_ptr(), width as i32, height as i32).unwrap();
+//         // tx.tr
+//         tx.send((img, ts)).await.unwrap();
+//         // tracing::debug!("camera capture");
+//     }
+// }

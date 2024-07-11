@@ -1,10 +1,6 @@
-use rpi::Result;
+// use rpi::Result;
 
-fn main() -> Result<()> {
+fn main() {
     // init();
-    multi_process()
-}
-
-fn multi_process() -> Result<()> {
-    Ok(())
+    // multi_process()
 }

@@ -1,16 +1,23 @@
 use burn::tensor::activation::leaky_relu;
 use burn_ndarray::{NdArray, NdArrayDevice};
 use nalgebra::Vector6;
+use serde::{Deserialize, Serialize};
 
 use crate::aruco_finder::Aruco;
 
-use burn::record::{NamedMpkFileRecorder, Recorder};
+use burn::record::Recorder;
 use burn::{
     module::Module,
     nn::{Linear, LinearConfig},
     record::FullPrecisionSettings,
     tensor::{backend::Backend, Tensor},
 };
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum FingerForceResult {
+    Force(Force),
+    NoAruco,
+}
 
 // nn.Linear(6, 1000),
 // nn.Linear(1000, 100),
@@ -59,32 +66,32 @@ fn load_model(path: &str) -> Net<NdArray> {
     Net::<Backend>::init(&device).load_record(record)
 }
 
-pub fn convert() {
-    type Backend = burn_ndarray::NdArray<f32>;
-    let device = Default::default();
+// pub fn convert() {
+//     type Backend = burn_ndarray::NdArray<f32>;
+//     let device = Default::default();
 
-    // Load PyTorch weights into a model record.
-    let load_args = burn_import::pytorch::LoadArgs::new("./model.pth".into())
-        // .with_debug_print()
-        .with_key_remap(r"model\.(\d)", "l$1");
-    let record: NetRecord<Backend> =
-        burn_import::pytorch::PyTorchFileRecorder::<FullPrecisionSettings>::default()
-            .load(load_args, &device)
-            .expect("Failed to decode state");
+//     // Load PyTorch weights into a model record.
+//     let load_args = burn_import::pytorch::LoadArgs::new("./model.pth".into())
+//         // .with_debug_print()
+//         .with_key_remap(r"model\.(\d)", "l$1");
+//     let record: NetRecord<Backend> =
+//         burn_import::pytorch::PyTorchFileRecorder::<FullPrecisionSettings>::default()
+//             .load(load_args, &device)
+//             .expect("Failed to decode state");
 
-    // Save the model record to a file.
-    let recorder = NamedMpkFileRecorder::<FullPrecisionSettings>::default();
+//     // Save the model record to a file.
+//     let recorder = NamedMpkFileRecorder::<FullPrecisionSettings>::default();
 
-    recorder
-        .record(record, "./model".into())
-        .expect("Failed to save model record");
-}
+//     recorder
+//         .record(record, "./model".into())
+//         .expect("Failed to save model record");
+// }
 
 pub struct SoftFinger {
     model: Net<NdArray>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Force {
     pub value: Vector6<f32>,
 }
@@ -96,7 +103,7 @@ impl SoftFinger {
         }
     }
 
-    pub fn predict_force(&self, aruco: Aruco) -> Force {
+    pub fn predict_force(&self, aruco: &Aruco) -> Force {
         // Isometry3::
         let x = self.model.forward(Tensor::<NdArray, 2>::from_data(
             [[
