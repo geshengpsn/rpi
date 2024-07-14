@@ -11,7 +11,7 @@ use axum::{
     Json, Router,
 };
 use futures::{SinkExt, StreamExt};
-use rpi::{FingerForceResult, IMUData, RecordCommand};
+use rpi::{FingerForceData, IMUData, RecordCommand};
 use tokio::net::ToSocketAddrs;
 use zenoh::prelude::r#async::*;
 
@@ -252,7 +252,8 @@ async fn handle_left_finger_force_streaming_socket(
             .unwrap();
         while let Ok(s) = data_subscriber.recv_async().await {
             let json_value = s.value.try_into().unwrap();
-            let data = serde_json::from_value::<FingerForceResult>(json_value).unwrap();
+            println!("{json_value:?}");
+            let data = serde_json::from_value::<FingerForceData>(json_value).unwrap();
             sender
                 .send(Message::Text(serde_json::to_string(&data).unwrap()))
                 .await
@@ -322,7 +323,7 @@ async fn handle_right_finger_force_streaming_socket(
             .unwrap();
         while let Ok(s) = data_subscriber.recv_async().await {
             let json_value = s.value.try_into().unwrap();
-            let data = serde_json::from_value::<FingerForceResult>(json_value).unwrap();
+            let data = serde_json::from_value::<FingerForceData>(json_value).unwrap();
             sender
                 .send(Message::Text(serde_json::to_string(&data).unwrap()))
                 .await

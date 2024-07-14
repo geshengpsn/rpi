@@ -4,6 +4,7 @@ use nalgebra::Vector6;
 use serde::{Deserialize, Serialize};
 
 use crate::aruco_finder::Aruco;
+use crate::data_saver::FrameData;
 
 use burn::record::Recorder;
 use burn::{
@@ -13,25 +14,23 @@ use burn::{
     tensor::{backend::Backend, Tensor},
 };
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum FingerForceResult {
-    Force(Force),
-    NoAruco,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FingerForceData {
+    pub data: Option<Force>,
+    pub time_timap: std::time::Duration,
 }
 
-// nn.Linear(6, 1000),
-// nn.Linear(1000, 100),
-// nn.LeakyReLU(),
-// nn.Linear(100, 50),
-// nn.LeakyReLU(),
-// nn.Linear(50, 6)
+impl FrameData for FingerForceData {
+    fn time_stamp(&self) -> std::time::Duration {
+        self.time_timap
+    }
+}
+
 #[derive(Module, Debug)]
 struct Net<B: Backend> {
     l0: Linear<B>,
     l2: Linear<B>,
-    // relu1: LeakyRelu<B>,
     l4: Linear<B>,
-    // relu2: LeakyRelu<B>,
     l6: Linear<B>,
 }
 
@@ -91,7 +90,7 @@ pub struct SoftFinger {
     model: Net<NdArray>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Force {
     pub value: Vector6<f32>,
 }

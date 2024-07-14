@@ -11,10 +11,6 @@ path = "src/zenoh/imu.rs"
 name = "zenoh-save-imu"
 path = "src/zenoh/save_imu.rs"
 
-# [[bin]]
-# name = "zenoh-save-imu-cmd"
-# path = "src/zenoh/save_imu_cmd.rs"
-
 [[bin]]
 name = "zenoh-server"
 path = "src/zenoh/server.rs"
@@ -23,17 +19,12 @@ path = "src/zenoh/server.rs"
 name = "zenoh-camera"
 path = "src/zenoh/camera.rs"
 
+[profile.release]
+debug = true
+
 [[bin]]
 name = "zenoh-finger"
 path = "src/zenoh/finger.rs"
-
-# [[bin]]
-# name = "zenoh-compress"
-# path = "src/zenoh/compress.rs"
-
-# [[bin]]
-# name = "zenoh-arucos"
-# path = "src/zenoh/arucos.rs"
 
 [dependencies]
 # channel
@@ -88,5 +79,5 @@ embedded-graphics = "0.8.1"
 # zenoh
 zenoh = "0.11.0"
 
-# [profile.release]
-# debug = true
+# cli
+clap = { version = "4.5.9", features = ["derive"] }

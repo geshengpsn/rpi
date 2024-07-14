@@ -4,11 +4,10 @@ use crate::Result;
 use nalgebra::Rotation3;
 use opencv::{
     aruco::{
-        detect_markers_def, estimate_pose_single_markers_def, get_predefined_dictionary,
-        Dictionary, PREDEFINED_DICTIONARY_NAME,
+        detect_markers, estimate_pose_single_markers_def, get_predefined_dictionary, DetectorParameters, DetectorParametersTrait, Dictionary, PREDEFINED_DICTIONARY_NAME
     },
     calib3d::rodrigues_def,
-    core::{Mat, MatTraitConstManual, Point2f, Ptr, ToInputArray, Vec3d, Vector},
+    core::{no_array, Mat, MatTraitConstManual, Point2f, Ptr, ToInputArray, Vec3d, Vector},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -85,6 +84,7 @@ pub struct ArucoFinderSetting {
 
 pub struct ArucoFinder {
     dictionary: Ptr<Dictionary>,
+    detector_paramter: Ptr<DetectorParameters>,
     setting: ArucoFinderSetting,
     camera_matrix: Mat,
     dist_coeffs: Vector<f64>,
@@ -100,8 +100,32 @@ impl ArucoFinder {
         ])
         .unwrap();
         let dist_coeffs = Vector::from_slice(setting.camera_distortion.as_slice());
+        let mut detector_paramter = Ptr::new(DetectorParameters::default().unwrap());
+        detector_paramter.set_use_aruco3_detection(true);
+        // detector_paramter.set_adaptive_thresh_win_size_min(val);
+        // parameter.adaptiveThreshWinSizeMin = 3;
+        // parameter.adaptiveThreshWinSizeMax = 23;
+        // parameter.adaptiveThreshWinSizeStep = 5;
+        // parameter.adaptiveThreshConstant = 7;
+        // parameter.minMarkerPerimeterRate = 0.1;
+        // parameter.maxMarkerPerimeterRate = 4;
+        // parameter.polygonalApproxAccuracyRate = 0.1;
+        // parameter.minCornerDistanceRate = 0.05;
+        // parameter.minDistanceToBorder = 3;
+        // parameter.minMarkerDistanceRate = 0.05;
+        // // parameter.cornerRefinementMethod = cv.CORNER_REFINE_NONE;
+        // // parameter.cornerRefinementWinSize = 5;
+        // // parameter.cornerRefinementMaxIterations = 30;
+        // // parameter.cornerRefinementMinAccuracy = 0.1;
+        // parameter.markerBorderBits = 1;
+        // parameter.perspectiveRemovePixelPerCell = 2;
+        // parameter.perspectiveRemoveIgnoredMarginPerCell = 0.13;
+        // parameter.maxErroneousBitsInBorderRate = 0.35;
+        // parameter.minOtsuStdDev = 5.0;
+        // parameter.errorCorrectionRate = 0.6;
         Self {
             dictionary,
+            detector_paramter,
             setting,
             camera_matrix,
             dist_coeffs,
@@ -119,7 +143,8 @@ impl ArucoFinder {
         let mut ids = Vector::<i32>::new();
         let mut rvecs = Vector::<Vec3d>::new();
         let mut tvecs = Vector::<Vec3d>::new();
-        detect_markers_def(img, &self.dictionary, &mut corners, &mut ids)?;
+        // detect_markers_def(img, &self.dictionary, &mut corners, &mut ids)?;
+        detect_markers(img, &self.dictionary, &mut corners, &mut ids, &self.detector_paramter, &mut no_array())?;
         if corners.is_empty() {
             return Ok(());
         }

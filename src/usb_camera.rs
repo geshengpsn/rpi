@@ -25,7 +25,7 @@ pub struct Camera<'a> {
     width: u32,
     height: u32,
     format: FourCC,
-    index: usize,
+    // index: usize,
     rgb_buffer: Vec<u8>,
 }
 
@@ -36,27 +36,36 @@ impl Debug for Camera<'_> {
             .field("width", &self.width)
             .field("height", &self.height)
             .field("format", &self.format.to_string())
-            .field("index", &self.index)
             .finish()
     }
 }
 
 impl Camera<'_> {
+    pub fn new_with_path(path: &str, width: u32, height: u32, fps: u32) -> Result<Self> {
+        let dev = Device::with_path(path).unwrap_or_else(|_| panic!("can not found camera:{path}"));
+        Self::new_from_device(dev, width, height, fps)
+    }
+
     pub fn new(index: usize, width: u32, height: u32, fps: u32) -> Result<Self> {
-        let device = Device::new(index).unwrap_or_else(|_| panic!("can not found camera{index}"));
+        let dev = Device::new(index).unwrap_or_else(|_| panic!("can not found camera{index}"));
+        Self::new_from_device(dev, width, height, fps)
+    }
+
+    fn new_from_device(device: Device, width: u32, height: u32, fps: u32) -> Result<Self> {
+        // let device = Device::new(index).unwrap_or_else(|_| panic!("can not found camera{index}"));
         let mut choosed_format = None;
         for format in device
             .enum_formats()
-            .unwrap_or_else(|_| panic!("enum formats fail (camera{index})"))
+            .unwrap_or_else(|_| panic!("enum formats fail (camera)"))
         {
             for frame_size in device
                 .enum_framesizes(format.fourcc)
-                .unwrap_or_else(|_| panic!("enum framesizes fail (camera{index})"))
+                .unwrap_or_else(|_| panic!("enum framesizes fail (camera)"))
             {
                 if let FrameSizeEnum::Discrete(size) = frame_size.size {
                     for fi in device
                         .enum_frameintervals(format.fourcc, size.width, size.height)
-                        .unwrap_or_else(|_| panic!("enum frameintervals fail (camera{index})"))
+                        .unwrap_or_else(|_| panic!("enum frameintervals fail (camera)"))
                     {
                         if let FrameIntervalEnum::Discrete(fraction) = fi.interval {
                             if size.width == width
@@ -85,14 +94,14 @@ impl Camera<'_> {
         let (width, height, fourcc) = choosed_format.unwrap();
         let real_format = device
             .set_format(&Format::new(width, height, fourcc))
-            .unwrap_or_else(|_| panic!("set format fail (camera{index})"));
+            .unwrap_or_else(|_| panic!("set format fail (camera)"));
         let real_params = device
             .set_params(&Parameters::new(Fraction::new(1, fps)))
-            .unwrap_or_else(|_| panic!("set params fail (camera{index})"));
+            .unwrap_or_else(|_| panic!("set params fail (camera)"));
         let mut cam = Camera {
             stream: None,
             device,
-            index,
+            // index,
             fps: real_params.interval.denominator,
             format: real_format.fourcc,
             width: real_format.width,
@@ -105,7 +114,7 @@ impl Camera<'_> {
 
     fn open(&mut self) {
         let stream = MmapStream::new(&self.device, v4l::buffer::Type::VideoCapture)
-            .unwrap_or_else(|_| panic!("new mmap stream fail (camera{})", self.index));
+            .unwrap_or_else(|_| panic!("new mmap stream fail (camera)"));
         // stream.start()?;
         self.stream = Some(stream);
     }
