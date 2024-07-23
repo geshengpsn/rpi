@@ -12,10 +12,11 @@ use axum::{
 };
 use futures::{SinkExt, StreamExt};
 use rpi::{FingerForceData, IMUData, RecordCommand};
+use serde::{Deserialize, Serialize};
 use tokio::net::ToSocketAddrs;
 use zenoh::prelude::r#async::*;
 
-use tower_http::cors::CorsLayer;
+use tower_http::{cors::CorsLayer, services::ServeDir};
 
 struct AppState {
     imu_owner: tokio::sync::Mutex<Option<SocketAddr>>,
@@ -38,6 +39,9 @@ async fn server<A: ToSocketAddrs>(addr: A) {
     };
 
     let app = Router::new()
+        .route("/ping", get(ping))
+        .route("/info", get(info))
+        .route("/setting", post(setting))
         .route("/imu", get(imu_streaming_handler))
         .route("/imu/calibrate", post(imu_calibrate_handler))
         .route("/camera", get(camera_streaming_handler))
@@ -51,9 +55,10 @@ async fn server<A: ToSocketAddrs>(addr: A) {
         )
         .route("/recordstart", post(record_start_handler))
         .route("/recordend", post(record_end_handler))
+        .nest_service("/data", ServeDir::new("data"))
         .layer(CorsLayer::permissive())
         .with_state(state.into());
-
+    
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(
         listener,
@@ -61,6 +66,24 @@ async fn server<A: ToSocketAddrs>(addr: A) {
     )
     .await
     .unwrap();
+}
+
+async fn ping() -> impl IntoResponse {
+    StatusCode::OK
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Info {}
+
+async fn info() -> (StatusCode, Json<Info>) {
+    todo!()
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Setting {}
+
+async fn setting(Json(setting): Json<Setting>) -> StatusCode {
+    todo!()
 }
 
 async fn record_start_handler(Json(cmd): Json<RecordCommand>) -> StatusCode {
@@ -246,13 +269,18 @@ async fn handle_left_finger_force_streaming_socket(
     let mut send_task = tokio::spawn(async move {
         let session = zenoh::open(config::default()).res().await.unwrap();
         let data_subscriber = session
-            .declare_subscriber("left_finger/force")
+            .declare_subscriber("finger/left/force")
             .res()
             .await
             .unwrap();
+        // loop {
+        //     let res = data_subscriber.recv_async().await;
+        //     println!("{res:?}");
+        // }
+
         while let Ok(s) = data_subscriber.recv_async().await {
             let json_value = s.value.try_into().unwrap();
-            println!("{json_value:?}");
+            // println!("{json_value:?}");
             let data = serde_json::from_value::<FingerForceData>(json_value).unwrap();
             sender
                 .send(Message::Text(serde_json::to_string(&data).unwrap()))
@@ -317,7 +345,7 @@ async fn handle_right_finger_force_streaming_socket(
     let mut send_task = tokio::spawn(async move {
         let session = zenoh::open(config::default()).res().await.unwrap();
         let data_subscriber = session
-            .declare_subscriber("right_finger/force")
+            .declare_subscriber("finger/right/force")
             .res()
             .await
             .unwrap();

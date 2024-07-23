@@ -42,10 +42,10 @@ fn main() {
     let mut arucos = vec![];
     let session = zenoh::open(config::default()).res().unwrap();
     let is_right = match args.direct.as_str() {
-        "left" => {
+        "right" => {
             true
         }
-        "right" => {
+        "left" => {
             false
         }
         _=>{
@@ -53,9 +53,9 @@ fn main() {
         }
     };
     let key = if is_right {
-        "right_finger/force"
+        "finger/right/force"
     } else {
-        "left_finger/force"
+        "finger/left/force"
     };
     let force_pub = session.declare_publisher(key).res().unwrap();
     let cmd_subscriber = session.declare_subscriber("cmd/record").res().unwrap();
@@ -77,8 +77,14 @@ fn main() {
     let aruco_finder = ArucoFinder::new(setting);
     let mut csv_file = CSVFile::<FingerForceData>::new();
     loop {
-        // let start = Instant::now();
-        let (rgb_raw_data, time_stamp) = camera.capture().unwrap();
+        let (rgb_raw_data, time_stamp) = match camera.capture() {
+            Ok((rgb_raw_data, time_stamp)) => (rgb_raw_data, time_stamp),
+            Err(e) => {
+                println!("{e:?}");
+                continue;
+            },
+        };
+
         let rbg_img = unsafe {
             Mat::new_rows_cols_with_data_unsafe_def(
                 height as i32,
@@ -93,8 +99,8 @@ fn main() {
             .find(&bgr_mat, time_stamp, &mut arucos)
             .unwrap();
         let force_data = FingerForceData {
-            data: arucos.first().map(|aruco| soft_finger.predict_force(aruco)),
-            time_timap: time_stamp,
+            force: arucos.first().map(|aruco| soft_finger.predict_force(aruco)),
+            time_stamp,
         };
         force_pub
             .put(serde_json::to_value(force_data).unwrap())

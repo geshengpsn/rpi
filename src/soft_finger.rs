@@ -16,13 +16,13 @@ use burn::{
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FingerForceData {
-    pub data: Option<Force>,
-    pub time_timap: std::time::Duration,
+    pub force: Option<Force>,
+    pub time_stamp: std::time::Duration,
 }
 
 impl FrameData for FingerForceData {
     fn time_stamp(&self) -> std::time::Duration {
-        self.time_timap
+        self.time_stamp
     }
 }
 

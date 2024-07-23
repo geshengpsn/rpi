@@ -141,7 +141,7 @@ impl Camera<'_> {
 
         // let start = std::time::Instant::now();
         let mut decoder = JpegDecoder::new(raw_mjpeg);
-        decoder.decode_into(&mut self.rgb_buffer).unwrap(); // shouldn't happend
+        decoder.decode_into(&mut self.rgb_buffer)?; // shouldn't happend
                                                             // println!("      decode {:?}", start.elapsed());
 
         Ok((
