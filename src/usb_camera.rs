@@ -68,6 +68,7 @@ impl Camera<'_> {
                         .unwrap_or_else(|_| panic!("enum frameintervals fail (camera)"))
                     {
                         if let FrameIntervalEnum::Discrete(fraction) = fi.interval {
+                            // println!("{size} {fraction}");
                             if size.width == width
                                 && size.height == height
                                 && fraction.denominator == fps

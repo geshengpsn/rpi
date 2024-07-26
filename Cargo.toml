@@ -26,6 +26,10 @@ debug = true
 name = "zenoh-finger"
 path = "src/zenoh/finger.rs"
 
+[[bin]]
+name = "zenoh-angle"
+path = "src/zenoh/can.rs"
+
 [dependencies]
 # channel
 # crossbeam = "0.8.4"
@@ -81,3 +85,6 @@ zenoh = "0.11.0"
 
 # cli
 clap = { version = "4.5.9", features = ["derive"] }
+
+# can
+socketcan = "3.3.0"

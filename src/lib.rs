@@ -33,3 +33,9 @@ pub enum RecordCommand {
     },
     End,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AngleData {
+    pub data: u16,
+    pub time_stamp: std::time::Duration,
+}

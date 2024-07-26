@@ -11,7 +11,7 @@ use axum::{
     Json, Router,
 };
 use futures::{SinkExt, StreamExt};
-use rpi::{FingerForceData, IMUData, RecordCommand};
+use rpi::{AngleData, FingerForceData, IMUData, RecordCommand};
 use serde::{Deserialize, Serialize};
 use tokio::net::ToSocketAddrs;
 use zenoh::prelude::r#async::*;
@@ -40,11 +40,12 @@ async fn server<A: ToSocketAddrs>(addr: A) {
 
     let app = Router::new()
         .route("/ping", get(ping))
-        .route("/info", get(info))
-        .route("/setting", post(setting))
+        // .route("/info", get(info))
+        // .route("/setting", post(setting))
         .route("/imu", get(imu_streaming_handler))
-        .route("/imu/calibrate", post(imu_calibrate_handler))
-        .route("/camera", get(camera_streaming_handler))
+        // .route("/imu/calibrate", post(imu_calibrate_handler))
+        // .route("/camera", get(camera_streaming_handler))
+        .route("/angle", get(angle_streaming_handler))
         .route(
             "/left_finger/force",
             get(left_finger_force_streaming_handler),
@@ -53,9 +54,9 @@ async fn server<A: ToSocketAddrs>(addr: A) {
             "/right_finger/force",
             get(right_finger_force_streaming_handler),
         )
-        .route("/recordstart", post(record_start_handler))
-        .route("/recordend", post(record_end_handler))
-        .nest_service("/data", ServeDir::new("data"))
+        // .route("/recordstart", post(record_start_handler))
+        // .route("/recordend", post(record_end_handler))
+        // .nest_service("/data", ServeDir::new("data"))
         .layer(CorsLayer::permissive())
         .with_state(state.into());
     
@@ -158,6 +159,72 @@ async fn handle_imu_streaming_socket(socket: WebSocket, state: Arc<AppState>, ad
             }
         }
         recv_state.imu_owner.lock().await.take();
+    });
+
+    // If any one of the tasks exit, abort the other.
+    tokio::select! {
+        _ = (&mut send_task) => {
+            recv_close.abort();
+        },
+        _ = (&mut recv_close) => {
+            send_task.abort();
+        }
+    }
+    // end_state.owner.lock().unwrap().take();
+}
+
+
+
+async fn angle_streaming_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_angle_streaming_socket(socket, state, addr))
+}
+
+async fn handle_angle_streaming_socket(socket: WebSocket, state: Arc<AppState>, addr: SocketAddr) {
+    let (mut sender, mut receiver) = socket.split();
+    // {
+    //     let mut owner = state.imu_owner.lock().await;
+    //     match owner.as_ref() {
+    //         Some(current_addr) => {
+    //             if addr != *current_addr {
+    //                 return;
+    //             }
+    //         }
+    //         None => {
+    //             // new owner
+    //             owner.replace(addr);
+    //         }
+    //     }
+    // }
+
+    // let send_state = state.clone();
+    let mut send_task = tokio::spawn(async move {
+        let session = zenoh::open(config::default()).res().await.unwrap();
+        let data_subscriber = session.declare_subscriber("angle/data").res().await.unwrap();
+        while let Ok(s) = data_subscriber.recv_async().await {
+            let json_value = s.value.try_into().unwrap();
+            let data = serde_json::from_value::<AngleData>(json_value).unwrap();
+            sender
+                .send(Message::Text(serde_json::to_string(&data).unwrap()))
+                .await
+                .unwrap();
+        }
+        // send_state.imu_owner.lock().await.take();
+    });
+
+    // let recv_state = state.clone();
+    let mut recv_close = tokio::spawn(async move {
+        // let session = zenoh::open(config::default()).res().await.unwrap();
+        // let data_subscriber = session.declare_subscriber("imu/data").res().await.unwrap();
+        while let Some(Ok(msg)) = receiver.next().await {
+            if let Message::Close(_) = msg {
+                break;
+            }
+        }
+        // recv_state.imu_owner.lock().await.take();
     });
 
     // If any one of the tasks exit, abort the other.
