@@ -7,9 +7,9 @@ edition = "2021"
 name = "zenoh-imu"
 path = "src/zenoh/imu.rs"
 
-[[bin]]
-name = "zenoh-save-imu"
-path = "src/zenoh/save_imu.rs"
+# [[bin]]
+# name = "zenoh-save-imu"
+# path = "src/zenoh/save_imu.rs"
 
 [[bin]]
 name = "zenoh-server"

@@ -1,10 +1,11 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use rpi::AngleData;
 use socketcan::{CanDataFrame, CanSocket, EmbeddedFrame, Socket, StandardId};
 use zenoh::prelude::sync::*;
 
 fn main() {
+    // socketcan::nl::CanInterface::open("can0")
     let session = zenoh::open(config::default()).res().unwrap();
     let can = CanSocket::open("can0").unwrap();
     let start = Instant::now();

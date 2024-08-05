@@ -1,7 +1,5 @@
 use rpi::{
-    {CSVFile, DataFile},
-    {IMUData, IMU},
-    RecordCommand,
+    RecordCommand, {CSVFile, DataFile}, {IMUData, IMU},
 };
 use zenoh::prelude::sync::*;
 

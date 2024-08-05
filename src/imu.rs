@@ -3,7 +3,7 @@ use linux_embedded_hal::{Delay, I2cdev};
 use mpu6050_dmp::{
     address::Address, calibration::CalibrationParameters, quaternion::Quaternion, sensor::Mpu6050,
 };
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::time::Instant;
 // use tracing::{debug, info};
 

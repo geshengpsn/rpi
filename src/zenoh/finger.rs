@@ -42,13 +42,9 @@ fn main() {
     let mut arucos = vec![];
     let session = zenoh::open(config::default()).res().unwrap();
     let is_right = match args.direct.as_str() {
-        "right" => {
-            true
-        }
-        "left" => {
-            false
-        }
-        _=>{
+        "right" => true,
+        "left" => false,
+        _ => {
             panic!("left or right")
         }
     };
@@ -82,7 +78,7 @@ fn main() {
             Err(e) => {
                 println!("{e:?}");
                 continue;
-            },
+            }
         };
 
         let rbg_img = unsafe {

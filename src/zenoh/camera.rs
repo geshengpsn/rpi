@@ -11,7 +11,6 @@ use zenoh::prelude::sync::*;
 #[derive(Parser, Debug)]
 struct Args {
     usb: u32,
-
     // #[arg(short, long, default_value_t = 1920)]
     // width: u32,
 
@@ -37,7 +36,7 @@ fn main() {
             panic!("bad input:{}, only support 0,1,2,3", args.usb)
         }
     };
-    
+
     let path = format!("/dev/v4l/by-path/platform-xhci-hcd.{a}-usb-0:{b}:1.0-video-index0");
     let mut camera = Camera::new_with_path(&path, width, height, fps).unwrap();
 

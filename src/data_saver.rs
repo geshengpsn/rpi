@@ -1,13 +1,10 @@
-use std::{
-    io::BufWriter,
-    time::Duration,
-};
+use std::{io::BufWriter, time::Duration};
 
 use opencv::{
     core::{Mat, Size},
     videoio::{VideoWriter, VideoWriterTrait, VideoWriterTraitConst},
 };
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Command {

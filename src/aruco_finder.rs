@@ -4,7 +4,8 @@ use crate::Result;
 use nalgebra::Rotation3;
 use opencv::{
     aruco::{
-        detect_markers, estimate_pose_single_markers_def, get_predefined_dictionary, DetectorParameters, DetectorParametersTrait, Dictionary, PREDEFINED_DICTIONARY_NAME
+        detect_markers, estimate_pose_single_markers_def, get_predefined_dictionary,
+        DetectorParameters, DetectorParametersTrait, Dictionary, PREDEFINED_DICTIONARY_NAME,
     },
     calib3d::rodrigues_def,
     core::{no_array, Mat, MatTraitConstManual, Point2f, Ptr, ToInputArray, Vec3d, Vector},
@@ -144,7 +145,14 @@ impl ArucoFinder {
         let mut rvecs = Vector::<Vec3d>::new();
         let mut tvecs = Vector::<Vec3d>::new();
         // detect_markers_def(img, &self.dictionary, &mut corners, &mut ids)?;
-        detect_markers(img, &self.dictionary, &mut corners, &mut ids, &self.detector_paramter, &mut no_array())?;
+        detect_markers(
+            img,
+            &self.dictionary,
+            &mut corners,
+            &mut ids,
+            &self.detector_paramter,
+            &mut no_array(),
+        )?;
         if corners.is_empty() {
             return Ok(());
         }
