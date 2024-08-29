@@ -142,6 +142,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96d30a06541fbafbc7f82ed10c06164cfbd2c401138f6addd8404629c4b16711"
 
 [[package]]
+name = "as5600"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fdbe60b23e3ae22f4618c03b63aa884c4ca641830880f9d64b770d6467b4b7f"
+dependencies = [
+ "embedded-hal 1.0.0",
+ "num-derive",
+ "num-traits",
+]
+
+[[package]]
 name = "ash"
 version = "0.37.3+1.3.251"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3225,6 +3236,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51d515d32fb182ee37cda2ccdcb92950d6a3c2893aa280e540671c2cd0f3b1d9"
 
 [[package]]
+name = "num-derive"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed3955f1a9c7c0c15e092f9c887db08b1fc683305fdf6eb6684f22555355e202"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.66",
+]
+
+[[package]]
 name = "num-integer"
 version = "0.1.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4144,6 +4166,7 @@ dependencies = [
 name = "rpi"
 version = "0.1.0"
 dependencies = [
+ "as5600",
  "axum",
  "burn",
  "burn-import",
@@ -4157,6 +4180,7 @@ dependencies = [
  "mpu6050-dmp",
  "nalgebra 0.33.0",
  "opencv",
+ "rppal",
  "serde",
  "serde_json",
  "socketcan",
@@ -4166,6 +4190,21 @@ dependencies = [
  "v4l",
  "zenoh",
  "zune-jpeg",
+]
+
+[[package]]
+name = "rppal"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b37e992f3222e304708025de77c9e395068a347449d0d7164f52d3beccdbd8d"
+dependencies = [
+ "embedded-hal 0.2.7",
+ "embedded-hal 1.0.0",
+ "embedded-hal-nb",
+ "libc",
+ "nb 0.1.3",
+ "spin_sleep",
+ "void",
 ]
 
 [[package]]
@@ -4839,6 +4878,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
 dependencies = [
  "lock_api",
+]
+
+[[package]]
+name = "spin_sleep"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "368a978649eaf70006b082e79c832bd72556ac1393eaf564d686e919dca2347f"
+dependencies = [
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

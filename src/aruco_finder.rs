@@ -4,8 +4,7 @@ use crate::Result;
 use nalgebra::Rotation3;
 use opencv::{
     aruco::{
-        detect_markers, estimate_pose_single_markers_def, get_predefined_dictionary,
-        DetectorParameters, DetectorParametersTrait, Dictionary, PREDEFINED_DICTIONARY_NAME,
+        detect_markers, estimate_pose_single_markers_def, get_predefined_dictionary, DetectorParameters, DetectorParametersTrait, DetectorParametersTraitConst, Dictionary, PREDEFINED_DICTIONARY_NAME
     },
     calib3d::rodrigues_def,
     core::{no_array, Mat, MatTraitConstManual, Point2f, Ptr, ToInputArray, Vec3d, Vector},
@@ -102,11 +101,14 @@ impl ArucoFinder {
         .unwrap();
         let dist_coeffs = Vector::from_slice(setting.camera_distortion.as_slice());
         let mut detector_paramter = Ptr::new(DetectorParameters::default().unwrap());
-        detector_paramter.set_use_aruco3_detection(true);
-        // detector_paramter.set_adaptive_thresh_win_size_min(val);
-        // parameter.adaptiveThreshWinSizeMin = 3;
-        // parameter.adaptiveThreshWinSizeMax = 23;
-        // parameter.adaptiveThreshWinSizeStep = 5;
+        // detector_paramter.set_use_aruco3_detection(true);
+        detector_paramter.set_adaptive_thresh_win_size_min(100);
+        detector_paramter.set_adaptive_thresh_win_size_max(200);
+        detector_paramter.set_adaptive_thresh_win_size_step(50);
+        detector_paramter.set_min_marker_perimeter_rate(0.2);
+        // detector_paramter.adaptiveThreshWinSizeMin = 100;
+        // detector_paramter.adaptiveThreshWinSizeMax = 200;
+        // detector_paramter.adaptiveThreshWinSizeStep = 50;
         // parameter.adaptiveThreshConstant = 7;
         // parameter.minMarkerPerimeterRate = 0.1;
         // parameter.maxMarkerPerimeterRate = 4;

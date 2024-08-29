@@ -21,9 +21,9 @@ struct Args {
 }
 fn main() {
     let args = Args::parse();
-    let width: u32 = 640;
-    let height = 360;
-    let fps = 330;
+    let width: u32 = 1280;
+    let height = 720;
+    let fps = 60;
     let (a, b) = match args.usb {
         0 => (1, 1),
         1 => (0, 2),
@@ -75,8 +75,8 @@ fn main() {
     loop {
         let (rgb_raw_data, time_stamp) = match camera.capture() {
             Ok((rgb_raw_data, time_stamp)) => (rgb_raw_data, time_stamp),
-            Err(e) => {
-                println!("{e:?}");
+            Err(_e) => {
+                // println!("{e:?}");
                 continue;
             }
         };

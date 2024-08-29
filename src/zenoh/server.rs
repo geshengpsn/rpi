@@ -12,15 +12,12 @@ use axum::{
 };
 use futures::{SinkExt, StreamExt};
 use rpi::{AngleData, FingerForceData};
-// use serde::{Deserialize, Serialize};
 use tokio::net::ToSocketAddrs;
 use zenoh::prelude::r#async::*;
-
 use tower_http::cors::CorsLayer;
-
 struct AppState {
     // imu_owner: tokio::sync::Mutex<Option<SocketAddr>>,
-    // camera_owner: tokio::sync::Mutex<Option<SocketAddr>>,
+    camera_owner: tokio::sync::Mutex<Option<SocketAddr>>,
     left_finger_owner: tokio::sync::Mutex<Option<SocketAddr>>,
     right_finger_owner: tokio::sync::Mutex<Option<SocketAddr>>,
 }
@@ -33,7 +30,7 @@ async fn main() {
 async fn server<A: ToSocketAddrs>(addr: A) {
     let state = AppState {
         // imu_owner: tokio::sync::Mutex::new(None),
-        // camera_owner: tokio::sync::Mutex::new(None),
+        camera_owner: tokio::sync::Mutex::new(None),
         left_finger_owner: tokio::sync::Mutex::new(None),
         right_finger_owner: tokio::sync::Mutex::new(None),
     };
@@ -44,7 +41,7 @@ async fn server<A: ToSocketAddrs>(addr: A) {
         // .route("/setting", post(setting))
         // .route("/imu", get(imu_streaming_handler))
         // .route("/imu/calibrate", post(imu_calibrate_handler))
-        // .route("/camera", get(camera_streaming_handler))
+        .route("/camera", get(camera_streaming_handler))
         .route("/angle", get(angle_streaming_handler))
         .route(
             "/left_finger/force",
@@ -247,63 +244,63 @@ async fn handle_angle_streaming_socket(socket: WebSocket) {
 //     StatusCode::OK
 // }
 
-// async fn camera_streaming_handler(
-//     ws: WebSocketUpgrade,
-//     State(state): State<Arc<AppState>>,
-//     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-// ) -> impl IntoResponse {
-//     ws.on_upgrade(move |socket| handle_camera_streaming_socket(socket, state, addr))
-// }
+async fn camera_streaming_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_camera_streaming_socket(socket, state, addr))
+}
 
-// async fn handle_camera_streaming_socket(socket: WebSocket, state: Arc<AppState>, addr: SocketAddr) {
-//     let (mut sender, mut receiver) = socket.split();
-//     {
-//         let mut owner = state.camera_owner.lock().await;
-//         match owner.as_ref() {
-//             Some(current_addr) => {
-//                 if addr != *current_addr {
-//                     return;
-//                 }
-//             }
-//             None => {
-//                 // new owner
-//                 owner.replace(addr);
-//             }
-//         }
-//     }
-//     let send_state = state.clone();
-//     let mut send_task = tokio::spawn(async move {
-//         let session = zenoh::open(config::default()).res().await.unwrap();
-//         let data_subscriber = session.declare_subscriber("camera").res().await.unwrap();
-//         while let Ok(s) = data_subscriber.recv_async().await {
-//             let data: Vec<u8> = s.value.try_into().unwrap();
-//             sender.send(Message::Binary(data)).await.unwrap();
-//         }
-//         send_state.camera_owner.lock().await.take();
-//     });
+async fn handle_camera_streaming_socket(socket: WebSocket, state: Arc<AppState>, addr: SocketAddr) {
+    let (mut sender, mut receiver) = socket.split();
+    {
+        let mut owner = state.camera_owner.lock().await;
+        match owner.as_ref() {
+            Some(current_addr) => {
+                if addr != *current_addr {
+                    return;
+                }
+            }
+            None => {
+                // new owner
+                owner.replace(addr);
+            }
+        }
+    }
+    let send_state = state.clone();
+    let mut send_task = tokio::spawn(async move {
+        let session = zenoh::open(config::default()).res().await.unwrap();
+        let data_subscriber = session.declare_subscriber("camera").res().await.unwrap();
+        while let Ok(s) = data_subscriber.recv_async().await {
+            let data: Vec<u8> = s.value.try_into().unwrap();
+            sender.send(Message::Binary(data)).await.unwrap();
+        }
+        send_state.camera_owner.lock().await.take();
+    });
 
-//     let recv_state = state.clone();
-//     let mut recv_close = tokio::spawn(async move {
-//         // let session = zenoh::open(config::default()).res().await.unwrap();
-//         // let data_subscriber = session.declare_subscriber("imu/data").res().await.unwrap();
-//         while let Some(Ok(msg)) = receiver.next().await {
-//             if let Message::Close(_) = msg {
-//                 break;
-//             }
-//         }
-//         recv_state.camera_owner.lock().await.take();
-//     });
+    let recv_state = state.clone();
+    let mut recv_close = tokio::spawn(async move {
+        // let session = zenoh::open(config::default()).res().await.unwrap();
+        // let data_subscriber = session.declare_subscriber("imu/data").res().await.unwrap();
+        while let Some(Ok(msg)) = receiver.next().await {
+            if let Message::Close(_) = msg {
+                break;
+            }
+        }
+        recv_state.camera_owner.lock().await.take();
+    });
 
-//     // If any one of the tasks exit, abort the other.
-//     tokio::select! {
-//         _ = (&mut send_task) => {
-//             recv_close.abort();
-//         },
-//         _ = (&mut recv_close) => {
-//             send_task.abort();
-//         }
-//     }
-// }
+    // If any one of the tasks exit, abort the other.
+    tokio::select! {
+        _ = (&mut send_task) => {
+            recv_close.abort();
+        },
+        _ = (&mut recv_close) => {
+            send_task.abort();
+        }
+    }
+}
 
 async fn left_finger_force_streaming_handler(
     ws: WebSocketUpgrade,
