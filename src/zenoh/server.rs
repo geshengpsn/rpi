@@ -1,61 +1,105 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::net::SocketAddr;
 
 use axum::{
-    extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
-        ConnectInfo, State,
-    },
+    extract::ws::{Message, WebSocket, WebSocketUpgrade},
     http::StatusCode,
     response::IntoResponse,
     routing::get,
     Router,
 };
 use futures::{SinkExt, StreamExt};
-use rpi::{AngleData, FingerForceData};
+use rpi::FingerForceData;
 use tokio::net::ToSocketAddrs;
-use zenoh::prelude::r#async::*;
 use tower_http::cors::CorsLayer;
-struct AppState {
-    // imu_owner: tokio::sync::Mutex<Option<SocketAddr>>,
-    camera_owner: tokio::sync::Mutex<Option<SocketAddr>>,
-    left_finger_owner: tokio::sync::Mutex<Option<SocketAddr>>,
-    right_finger_owner: tokio::sync::Mutex<Option<SocketAddr>>,
-}
+use zenoh::prelude::r#async::*;
 
 #[tokio::main]
 async fn main() {
     server("0.0.0.0:8080").await;
 }
 
-async fn server<A: ToSocketAddrs>(addr: A) {
-    let state = AppState {
-        // imu_owner: tokio::sync::Mutex::new(None),
-        camera_owner: tokio::sync::Mutex::new(None),
-        left_finger_owner: tokio::sync::Mutex::new(None),
-        right_finger_owner: tokio::sync::Mutex::new(None),
-    };
+trait ValueToMsg {
+    fn key() -> String;
+    fn value_to_msg(s: Sample) -> Message;
+}
 
+struct Left;
+struct Right;
+
+struct FingerCamera<L> {
+    _p: std::marker::PhantomData<L>,
+}
+
+impl ValueToMsg for FingerCamera<Left> {
+    fn key() -> String {
+        "finger/left/image".into()
+    }
+
+    fn value_to_msg(s: Sample) -> Message {
+        let data: Vec<u8> = s.value.try_into().unwrap();
+        Message::Binary(data)
+    }
+}
+
+impl ValueToMsg for FingerCamera<Right> {
+    fn key() -> String {
+        "finger/right/image".into()
+    }
+
+    fn value_to_msg(s: Sample) -> Message {
+        let data: Vec<u8> = s.value.try_into().unwrap();
+        Message::Binary(data)
+    }
+}
+
+struct FingerForce<L> {
+    _p: std::marker::PhantomData<L>,
+}
+
+impl ValueToMsg for FingerForce<Left> {
+    fn key() -> String {
+        "finger/left/force".into()
+    }
+
+    fn value_to_msg(s: Sample) -> Message {
+        let v = s.value.try_into().unwrap();
+        let data = serde_json::from_value::<FingerForceData>(v).unwrap();
+        Message::Text(serde_json::to_string(&data).unwrap())
+    }
+}
+
+impl ValueToMsg for FingerForce<Right> {
+    fn key() -> String {
+        "finger/right/force".into()
+    }
+
+    fn value_to_msg(s: Sample) -> Message {
+        let v = s.value.try_into().unwrap();
+        let data = serde_json::from_value::<FingerForceData>(v).unwrap();
+        Message::Text(serde_json::to_string(&data).unwrap())
+    }
+}
+
+async fn server<A: ToSocketAddrs>(addr: A) {
     let app = Router::new()
         .route("/ping", get(ping))
-        // .route("/info", get(info))
-        // .route("/setting", post(setting))
-        // .route("/imu", get(imu_streaming_handler))
-        // .route("/imu/calibrate", post(imu_calibrate_handler))
-        .route("/camera", get(camera_streaming_handler))
-        .route("/angle", get(angle_streaming_handler))
+        .route(
+            "/left_finger/image",
+            get(streaming_handler::<FingerCamera<Left>>),
+        )
+        .route(
+            "/right_finger/image",
+            get(streaming_handler::<FingerCamera<Right>>),
+        )
         .route(
             "/left_finger/force",
-            get(left_finger_force_streaming_handler),
+            get(streaming_handler::<FingerForce<Left>>),
         )
         .route(
             "/right_finger/force",
-            get(right_finger_force_streaming_handler),
+            get(streaming_handler::<FingerForce<Right>>),
         )
-        // .route("/recordstart", post(record_start_handler))
-        // .route("/recordend", post(record_end_handler))
-        // .nest_service("/data", ServeDir::new("data"))
-        .layer(CorsLayer::permissive())
-        .with_state(state.into());
+        .layer(CorsLayer::permissive());
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(
@@ -70,377 +114,31 @@ async fn ping() -> impl IntoResponse {
     StatusCode::OK
 }
 
-// #[derive(Debug, Serialize, Deserialize)]
-// struct Info {}
-
-// async fn info() -> (StatusCode, Json<Info>) {
-//     todo!()
-// }
-
-// #[derive(Debug, Serialize, Deserialize)]
-// struct Setting {}
-
-// async fn setting(Json(setting): Json<Setting>) -> StatusCode {
-//     todo!()
-// }
-
-// async fn record_start_handler(Json(cmd): Json<RecordCommand>) -> StatusCode {
-//     let session = zenoh::open(config::default()).res().await.unwrap();
-//     let cmd_pub = session.declare_publisher("cmd/record").res().await.unwrap();
-//     cmd_pub
-//         .put(serde_json::to_value(cmd).unwrap())
-//         .res()
-//         .await
-//         .unwrap();
-//     StatusCode::OK
-// }
-
-// async fn record_end_handler() -> StatusCode {
-//     let session = zenoh::open(config::default()).res().await.unwrap();
-//     let cmd_pub = session.declare_publisher("cmd/record").res().await.unwrap();
-//     cmd_pub
-//         .put(serde_json::to_value(RecordCommand::End).unwrap())
-//         .res()
-//         .await
-//         .unwrap();
-//     StatusCode::OK
-// }
-
-// async fn imu_streaming_handler(
-//     ws: WebSocketUpgrade,
-//     State(state): State<Arc<AppState>>,
-//     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-// ) -> impl IntoResponse {
-//     ws.on_upgrade(move |socket| handle_imu_streaming_socket(socket, state, addr))
-// }
-
-// async fn handle_imu_streaming_socket(socket: WebSocket, state: Arc<AppState>, addr: SocketAddr) {
-//     let (mut sender, mut receiver) = socket.split();
-//     {
-//         let mut owner = state.imu_owner.lock().await;
-//         match owner.as_ref() {
-//             Some(current_addr) => {
-//                 if addr != *current_addr {
-//                     return;
-//                 }
-//             }
-//             None => {
-//                 // new owner
-//                 owner.replace(addr);
-//             }
-//         }
-//     }
-
-//     let send_state = state.clone();
-//     let mut send_task = tokio::spawn(async move {
-//         let session = zenoh::open(config::default()).res().await.unwrap();
-//         let data_subscriber = session.declare_subscriber("imu/data").res().await.unwrap();
-//         while let Ok(s) = data_subscriber.recv_async().await {
-//             let json_value = s.value.try_into().unwrap();
-//             let data = serde_json::from_value::<IMUData>(json_value).unwrap();
-//             sender
-//                 .send(Message::Text(serde_json::to_string(&data).unwrap()))
-//                 .await
-//                 .unwrap();
-//         }
-//         send_state.imu_owner.lock().await.take();
-//     });
-
-//     let recv_state = state.clone();
-//     let mut recv_close = tokio::spawn(async move {
-//         // let session = zenoh::open(config::default()).res().await.unwrap();
-//         // let data_subscriber = session.declare_subscriber("imu/data").res().await.unwrap();
-//         while let Some(Ok(msg)) = receiver.next().await {
-//             if let Message::Close(_) = msg {
-//                 break;
-//             }
-//         }
-//         recv_state.imu_owner.lock().await.take();
-//     });
-
-//     // If any one of the tasks exit, abort the other.
-//     tokio::select! {
-//         _ = (&mut send_task) => {
-//             recv_close.abort();
-//         },
-//         _ = (&mut recv_close) => {
-//             send_task.abort();
-//         }
-//     }
-//     // end_state.owner.lock().unwrap().take();
-// }
-
-async fn angle_streaming_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
-    ws.on_upgrade(handle_angle_streaming_socket)
+async fn streaming_handler<V: ValueToMsg + 'static>(ws: WebSocketUpgrade) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_streaming_socket::<V>(socket))
 }
 
-async fn handle_angle_streaming_socket(socket: WebSocket) {
+async fn handle_streaming_socket<V: ValueToMsg + 'static>(socket: WebSocket) {
     let (mut sender, mut receiver) = socket.split();
-    // {
-    //     let mut owner = state.imu_owner.lock().await;
-    //     match owner.as_ref() {
-    //         Some(current_addr) => {
-    //             if addr != *current_addr {
-    //                 return;
-    //             }
-    //         }
-    //         None => {
-    //             // new owner
-    //             owner.replace(addr);
-    //         }
-    //     }
-    // }
-
-    // let send_state = state.clone();
     let mut send_task = tokio::spawn(async move {
         let session = zenoh::open(config::default()).res().await.unwrap();
-        let data_subscriber = session
-            .declare_subscriber("angle/data")
-            .res()
-            .await
-            .unwrap();
+        let data_subscriber = session.declare_subscriber(V::key()).res().await.unwrap();
         while let Ok(s) = data_subscriber.recv_async().await {
-            let json_value = s.value.try_into().unwrap();
-            let data = serde_json::from_value::<AngleData>(json_value).unwrap();
-            if sender
-                .send(Message::Text(serde_json::to_string(&data).unwrap()))
-                .await
-                .is_err()
-            {
+            // let value = s.value;
+            let msg = V::value_to_msg(s);
+            // let data = serde_json::from_value::<AngleData>(json_value).unwrap();
+            if sender.send(msg).await.is_err() {
                 break;
             }
         }
-        // send_state.imu_owner.lock().await.take();
     });
 
-    // let recv_state = state.clone();
     let mut recv_close = tokio::spawn(async move {
-        // let session = zenoh::open(config::default()).res().await.unwrap();
-        // let data_subscriber = session.declare_subscriber("imu/data").res().await.unwrap();
         while let Some(Ok(msg)) = receiver.next().await {
             if let Message::Close(_) = msg {
                 break;
             }
         }
-        // recv_state.imu_owner.lock().await.take();
-    });
-
-    // If any one of the tasks exit, abort the other.
-    tokio::select! {
-        _ = (&mut send_task) => {
-            recv_close.abort();
-        },
-        _ = (&mut recv_close) => {
-            send_task.abort();
-        }
-    }
-    // end_state.owner.lock().unwrap().take();
-}
-
-// async fn imu_calibrate_handler() -> StatusCode {
-//     let session = zenoh::open(config::default()).res().await.unwrap();
-//     let cmd_pub = session.declare_publisher("imu/cmd").res().await.unwrap();
-//     cmd_pub.put(0u8).res().await.unwrap();
-//     StatusCode::OK
-// }
-
-async fn camera_streaming_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<Arc<AppState>>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_camera_streaming_socket(socket, state, addr))
-}
-
-async fn handle_camera_streaming_socket(socket: WebSocket, state: Arc<AppState>, addr: SocketAddr) {
-    let (mut sender, mut receiver) = socket.split();
-    {
-        let mut owner = state.camera_owner.lock().await;
-        match owner.as_ref() {
-            Some(current_addr) => {
-                if addr != *current_addr {
-                    return;
-                }
-            }
-            None => {
-                // new owner
-                owner.replace(addr);
-            }
-        }
-    }
-    let send_state = state.clone();
-    let mut send_task = tokio::spawn(async move {
-        let session = zenoh::open(config::default()).res().await.unwrap();
-        let data_subscriber = session.declare_subscriber("camera").res().await.unwrap();
-        while let Ok(s) = data_subscriber.recv_async().await {
-            let data: Vec<u8> = s.value.try_into().unwrap();
-            sender.send(Message::Binary(data)).await.unwrap();
-        }
-        send_state.camera_owner.lock().await.take();
-    });
-
-    let recv_state = state.clone();
-    let mut recv_close = tokio::spawn(async move {
-        // let session = zenoh::open(config::default()).res().await.unwrap();
-        // let data_subscriber = session.declare_subscriber("imu/data").res().await.unwrap();
-        while let Some(Ok(msg)) = receiver.next().await {
-            if let Message::Close(_) = msg {
-                break;
-            }
-        }
-        recv_state.camera_owner.lock().await.take();
-    });
-
-    // If any one of the tasks exit, abort the other.
-    tokio::select! {
-        _ = (&mut send_task) => {
-            recv_close.abort();
-        },
-        _ = (&mut recv_close) => {
-            send_task.abort();
-        }
-    }
-}
-
-async fn left_finger_force_streaming_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<Arc<AppState>>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_left_finger_force_streaming_socket(socket, state, addr))
-}
-
-async fn handle_left_finger_force_streaming_socket(
-    socket: WebSocket,
-    state: Arc<AppState>,
-    addr: SocketAddr,
-) {
-    let (mut sender, mut receiver) = socket.split();
-    {
-        let mut owner = state.left_finger_owner.lock().await;
-        match owner.as_ref() {
-            Some(current_addr) => {
-                if addr != *current_addr {
-                    return;
-                }
-            }
-            None => {
-                // new owner
-                owner.replace(addr);
-            }
-        }
-    }
-    let send_state = state.clone();
-    let mut send_task = tokio::spawn(async move {
-        let session = zenoh::open(config::default()).res().await.unwrap();
-        let data_subscriber = session
-            .declare_subscriber("finger/left/force")
-            .res()
-            .await
-            .unwrap();
-        // loop {
-        //     let res = data_subscriber.recv_async().await;
-        //     println!("{res:?}");
-        // }
-
-        while let Ok(s) = data_subscriber.recv_async().await {
-            let json_value = s.value.try_into().unwrap();
-            // println!("{json_value:?}");
-            let data = serde_json::from_value::<FingerForceData>(json_value).unwrap();
-            if sender
-                .send(Message::Text(serde_json::to_string(&data).unwrap()))
-                .await
-                .is_err()
-            {
-                break;
-            }
-        }
-        send_state.left_finger_owner.lock().await.take();
-    });
-
-    let recv_state = state.clone();
-    let mut recv_close = tokio::spawn(async move {
-        // let session = zenoh::open(config::default()).res().await.unwrap();
-        // let data_subscriber = session.declare_subscriber("imu/data").res().await.unwrap();
-        while let Some(Ok(msg)) = receiver.next().await {
-            if let Message::Close(_) = msg {
-                break;
-            }
-        }
-        recv_state.left_finger_owner.lock().await.take();
-    });
-
-    // If any one of the tasks exit, abort the other.
-    tokio::select! {
-        _ = (&mut send_task) => {
-            recv_close.abort();
-        },
-        _ = (&mut recv_close) => {
-            send_task.abort();
-        }
-    }
-}
-
-async fn right_finger_force_streaming_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<Arc<AppState>>,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_right_finger_force_streaming_socket(socket, state, addr))
-}
-
-async fn handle_right_finger_force_streaming_socket(
-    socket: WebSocket,
-    state: Arc<AppState>,
-    addr: SocketAddr,
-) {
-    let (mut sender, mut receiver) = socket.split();
-    {
-        let mut owner = state.right_finger_owner.lock().await;
-        match owner.as_ref() {
-            Some(current_addr) => {
-                if addr != *current_addr {
-                    return;
-                }
-            }
-            None => {
-                // new owner
-                owner.replace(addr);
-            }
-        }
-    }
-    let send_state = state.clone();
-    let mut send_task = tokio::spawn(async move {
-        let session = zenoh::open(config::default()).res().await.unwrap();
-        let data_subscriber = session
-            .declare_subscriber("finger/right/force")
-            .res()
-            .await
-            .unwrap();
-        while let Ok(s) = data_subscriber.recv_async().await {
-            let json_value = s.value.try_into().unwrap();
-            let data = serde_json::from_value::<FingerForceData>(json_value).unwrap();
-            if sender
-                .send(Message::Text(serde_json::to_string(&data).unwrap()))
-                .await
-                .is_err()
-            {
-                break;
-            }
-        }
-        send_state.right_finger_owner.lock().await.take();
-    });
-
-    let recv_state = state.clone();
-    let mut recv_close = tokio::spawn(async move {
-        // let session = zenoh::open(config::default()).res().await.unwrap();
-        // let data_subscriber = session.declare_subscriber("imu/data").res().await.unwrap();
-        while let Some(Ok(msg)) = receiver.next().await {
-            if let Message::Close(_) = msg {
-                break;
-            }
-        }
-        recv_state.right_finger_owner.lock().await.take();
     });
 
     // If any one of the tasks exit, abort the other.

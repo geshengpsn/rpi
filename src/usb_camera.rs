@@ -151,29 +151,3 @@ impl Camera<'_> {
         ))
     }
 }
-
-// pub fn mat_from_ptr(ptr: *const u8, width: i32, height: i32) -> Result<Mat> {
-//     let img =
-//         unsafe { Mat::new_rows_cols_with_data_unsafe_def(height, width, CV_8UC3, ptr as *mut _) }?;
-//     let mut res_img = Mat::default();
-//     cvt_color_def(&img, &mut res_img, COLOR_RGB2BGR)?;
-//     Ok(res_img)
-// }
-
-// pub async fn usbcamera(
-//     tx: mpsc::Sender<(Mat, Duration)>,
-//     aruco_camera_index: usize,
-//     width: u32,
-//     height: u32,
-//     fps: u32,
-// ) {
-//     let mut cam =
-//         Camera::new(aruco_camera_index, width, height, fps).expect("camera bad parameters");
-//     loop {
-//         let (raw_img, ts) = cam.capture().unwrap();
-//         let img = mat_from_ptr(raw_img.as_ptr(), width as i32, height as i32).unwrap();
-//         // tx.tr
-//         tx.send((img, ts)).await.unwrap();
-//         // tracing::debug!("camera capture");
-//     }
-// }

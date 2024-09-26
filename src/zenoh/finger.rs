@@ -1,11 +1,12 @@
 use clap::Parser;
 use opencv::{
-    core::{Mat, CV_8UC3},
+    core::{Mat, Vector, VectorToVec, CV_8UC3},
+    imgcodecs::imencode_def,
     imgproc::{cvt_color_def, COLOR_RGB2BGR},
 };
 use rpi::{
-    ArucoFinder, ArucoFinderSetting, ArucoIntrinsic, CSVFile, Camera, CameraDistortion,
-    CameraIntrinsic, DataFile, FingerForceData, RecordCommand, SoftFinger,
+    ArucoFinder, ArucoFinderSetting, ArucoIntrinsic, Camera, CameraDistortion,
+    CameraIntrinsic, FingerForceData, SoftFinger,
 };
 use zenoh::prelude::sync::*;
 
@@ -13,17 +14,18 @@ use zenoh::prelude::sync::*;
 struct Args {
     // #[arg(default_value_t = left)]
     direct: String,
-
     // #[arg(short, long)]
     path: String,
     // #[arg(short, long)]
     usb: u32,
+
+    fps: u32,
 }
 fn main() {
     let args = Args::parse();
-    let width: u32 = 1280;
-    let height = 720;
-    let fps = 60;
+    let width: u32 = 640;
+    let height = 480;
+    let fps = args.fps;
     let (a, b) = match args.usb {
         0 => (1, 1),
         1 => (0, 2),
@@ -48,13 +50,20 @@ fn main() {
             panic!("left or right")
         }
     };
-    let key = if is_right {
-        "finger/right/force"
+    let base_key = if is_right {
+        "finger/right"
     } else {
-        "finger/left/force"
+        "finger/left"
     };
-    let force_pub = session.declare_publisher(key).res().unwrap();
-    let cmd_subscriber = session.declare_subscriber("cmd/record").res().unwrap();
+    let force_pub = session
+        .declare_publisher(format!("{base_key}/force"))
+        .res()
+        .unwrap();
+    let image_pub = session
+        .declare_publisher(format!("{base_key}/image"))
+        .res()
+        .unwrap();
+    // let cmd_subscriber = session.declare_subscriber("cmd/record").res().unwrap();
 
     let cx = 655.3664;
     let cy = 367.5246;
@@ -71,7 +80,8 @@ fn main() {
         camera_distortion: CameraDistortion::from_5_params(k1, k2, p1, p2, k3),
     };
     let aruco_finder = ArucoFinder::new(setting);
-    let mut csv_file = CSVFile::<FingerForceData>::new();
+    // let mut csv_file = CSVFile::<FingerForceData>::new();
+    let mut v = Vector::<u8>::new();
     loop {
         let (rgb_raw_data, time_stamp) = match camera.capture() {
             Ok((rgb_raw_data, time_stamp)) => (rgb_raw_data, time_stamp),
@@ -91,40 +101,19 @@ fn main() {
         }
         .unwrap();
         cvt_color_def(&rbg_img, &mut bgr_mat, COLOR_RGB2BGR).unwrap();
+        imencode_def(".jpg", &bgr_mat, &mut v).unwrap();
+        image_pub.put(v.to_vec()).res().unwrap();
         aruco_finder
-            .find(&bgr_mat, time_stamp, &mut arucos)
+            .find(&rbg_img, time_stamp, &mut arucos)
             .unwrap();
         let force_data = FingerForceData {
             force: arucos.first().map(|aruco| soft_finger.predict_force(aruco)),
             time_stamp,
         };
+        // println!("{force_data:?}");
         force_pub
             .put(serde_json::to_value(force_data).unwrap())
             .res()
             .unwrap();
-        if let Ok(cmd) = cmd_subscriber.try_recv() {
-            let cmd_json = cmd.value.try_into().unwrap();
-            let cmd = serde_json::from_value::<RecordCommand>(cmd_json).unwrap();
-            match cmd {
-                RecordCommand::Start {
-                    left_finger,
-                    right_finger,
-                    ..
-                } => {
-                    if !csv_file.is_started() {
-                        if is_right {
-                            csv_file.start_new(&right_finger, ())
-                        } else {
-                            csv_file.start_new(&left_finger, ())
-                        };
-                    }
-                }
-                RecordCommand::End => {
-                    if csv_file.is_started() {
-                        csv_file.end()
-                    }
-                }
-            }
-        }
     }
 }

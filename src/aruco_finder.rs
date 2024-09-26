@@ -4,7 +4,8 @@ use crate::Result;
 use nalgebra::Rotation3;
 use opencv::{
     aruco::{
-        detect_markers, estimate_pose_single_markers_def, get_predefined_dictionary, DetectorParameters, DetectorParametersTrait, DetectorParametersTraitConst, Dictionary, PREDEFINED_DICTIONARY_NAME
+        detect_markers, estimate_pose_single_markers_def, get_predefined_dictionary,
+        DetectorParameters, DetectorParametersTrait, Dictionary, PREDEFINED_DICTIONARY_NAME,
     },
     calib3d::rodrigues_def,
     core::{no_array, Mat, MatTraitConstManual, Point2f, Ptr, ToInputArray, Vec3d, Vector},
@@ -13,6 +14,7 @@ use opencv::{
 #[derive(Debug, Clone, Copy)]
 pub struct Aruco {
     pub id: i32,
+    pub corners: [[f32; 2];4],
     pub trans: [f64; 3],
     pub euler_angles: [f64; 3],
     pub time_stamp: Duration,
@@ -166,13 +168,21 @@ impl ArucoFinder {
             &mut rvecs,
             &mut tvecs,
         )?;
-        for (id, (rvec, tvec)) in ids.iter().zip(rvecs.iter().zip(tvecs.iter())) {
+        for (index, (id, (rvec, tvec))) in ids.iter().zip(rvecs.iter().zip(tvecs.iter())).enumerate() {
             let mut m = Mat::default();
             rodrigues_def(&rvec, &mut m)?;
             let m = nalgebra::Matrix3::from_iterator(m.iter::<f64>()?.map(|(_, v)| v));
             let (r, p, y) = Rotation3::from_matrix(&m).euler_angles();
+            let c = corners.get(index).unwrap();
+            let c = c.as_slice();
             arucos.push(Aruco {
                 id,
+                corners: [
+                    [c[0].x, c[0].y],
+                    [c[1].x, c[1].y],
+                    [c[2].x, c[2].y],
+                    [c[3].x, c[3].y],
+                ],
                 time_stamp,
                 trans: [tvec.0[0], tvec.0[1], tvec.0[2]],
                 euler_angles: [r, p, y],

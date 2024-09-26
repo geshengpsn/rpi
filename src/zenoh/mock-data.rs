@@ -9,9 +9,9 @@ use rpi::{AngleData, FingerForceData, Force};
 use zenoh::prelude::sync::*;
 
 fn main() {
-    spawn(mock_angle_data);
-    spawn(|| mock_finger_data("finger/left/force"));
-    mock_finger_data("finger/right/force");
+    // spawn(mock_angle_data);
+    // spawn(|| mock_finger_data("finger/left/force"));
+    // mock_finger_data("finger/right/force");
 }
 
 fn mock_angle_data() {
@@ -48,10 +48,7 @@ fn mock_angle_data() {
 
 fn mock_finger_data(key: &str) {
     let session = zenoh::open(config::default()).res().unwrap();
-    let force_pub = session
-        .declare_publisher(key)
-        .res()
-        .unwrap();
+    let force_pub = session.declare_publisher(key).res().unwrap();
     let start = Instant::now();
     loop {
         sleep(Duration::from_micros(16666));
